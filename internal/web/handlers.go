@@ -482,15 +482,58 @@ func (s *Server) handlePushTest(w http.ResponseWriter, r *http.Request) {
 
 // ── Routes (debug) ────────────────────────────────────────────────────────────
 
+const routesPageSize = 50
+
 func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
-	routes, err := s.db.GetAllRoutes()
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * routesPageSize
+
+	total, err := s.db.CountSearchRoutes(q)
 	if err != nil {
-		slog.Error("get routes", "err", err)
-		routes = nil
+		slog.Error("count routes", "err", err)
+	}
+	routes, routeErr := s.db.SearchRoutes(q, routesPageSize, offset)
+	if routeErr != nil {
+		slog.Error("get routes", "err", routeErr)
+	}
+
+	totalPages := (total + routesPageSize - 1) / routesPageSize
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
+	type routesData struct {
+		Routes     []db.Route
+		Query      string
+		Page       int
+		TotalPages int
+		Total      int
+		PrevPage   int
+		NextPage   int
+	}
+	prev, next := page-1, page+1
+	if prev < 1 {
+		prev = 0
+	}
+	if next > totalPages {
+		next = 0
 	}
 	s.render(w, r, "routes", TemplateData{
 		Title: "Cached routes",
-		Data:  routes,
+		Data: routesData{
+			Routes:     routes,
+			Query:      q,
+			Page:       page,
+			TotalPages: totalPages,
+			Total:      total,
+			PrevPage:   prev,
+			NextPage:   next,
+		},
 	})
 }
 

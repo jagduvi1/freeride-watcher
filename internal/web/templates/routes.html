@@ -1,13 +1,16 @@
 {{define "content"}}
 <hgroup>
   <h2>Cached routes</h2>
-  <p>Routes currently stored in the database (most recent first, max 500).</p>
+  <p>{{.Data.Total}} routes in database.</p>
 </hgroup>
 
-{{with .Data}}
-{{if not .}}
-  <article><p>No routes cached yet. The fetcher will populate this on the next scheduled run.</p></article>
-{{else}}
+<form method="get" action="/routes" role="search" style="display:flex;gap:.5rem;margin-bottom:1rem">
+  <input type="search" name="q" value="{{.Data.Query}}" placeholder="Search origin, destination or car…" style="flex:1">
+  <button type="submit">Search</button>
+  {{if .Data.Query}}<a href="/routes" role="button" class="outline secondary">Clear</a>{{end}}
+</form>
+
+{{with .Data.Routes}}
 <div class="table-responsive">
 <table>
   <thead>
@@ -32,7 +35,25 @@
   </tbody>
 </table>
 </div>
+
+{{if gt $.Data.TotalPages 1}}
+<nav style="display:flex;gap:.5rem;align-items:center;margin-top:1rem">
+  {{if $.Data.PrevPage}}
+    <a href="/routes?q={{$.Data.Query}}&page={{$.Data.PrevPage}}" role="button" class="outline">← Prev</a>
+  {{else}}
+    <button disabled class="outline">← Prev</button>
+  {{end}}
+  <span style="flex:1;text-align:center">Page {{$.Data.Page}} of {{$.Data.TotalPages}}</span>
+  {{if $.Data.NextPage}}
+    <a href="/routes?q={{$.Data.Query}}&page={{$.Data.NextPage}}" role="button" class="outline">Next →</a>
+  {{else}}
+    <button disabled class="outline">Next →</button>
+  {{end}}
+</nav>
 {{end}}
+
+{{else}}
+  <article><p>No routes found{{if $.Data.Query}} matching "{{$.Data.Query}}"{{end}}.</p></article>
 {{end}}
 
 <div style="margin-top:1rem">

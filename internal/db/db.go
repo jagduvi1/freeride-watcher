@@ -362,7 +362,16 @@ func (db *DB) UpsertRoute(r Route) (isNew bool, err error) {
 		return false, err
 	}
 	n, _ := res.RowsAffected()
-	return n > 0, nil
+	if n > 0 {
+		return true, nil
+	}
+	// Existing route: update mutable fields so names stay correct if the API
+	// or our parsing logic changes (e.g. city→name fix). first_seen is preserved.
+	_, err = db.Exec(
+		`UPDATE routes SET origin=?,destination=?,available_until=?,car_model=?,raw_json=?
+		 WHERE route_id=?`,
+		r.Origin, r.Destination, r.AvailableUntil, r.CarModel, r.RawJSON, r.RouteID)
+	return false, err
 }
 
 func (db *DB) GetAllRoutes() ([]Route, error) {
@@ -374,6 +383,42 @@ func (db *DB) GetAllRoutes() ([]Route, error) {
 	}
 	defer rows.Close()
 	return scanRoutes(rows)
+}
+
+func (db *DB) SearchRoutes(q string, limit, offset int) ([]Route, error) {
+	var rows *sql.Rows
+	var err error
+	if q == "" {
+		rows, err = db.Query(
+			`SELECT route_id,origin,destination,departure_at,available_until,car_model,raw_json,first_seen
+			 FROM routes ORDER BY departure_at DESC LIMIT ? OFFSET ?`,
+			limit, offset)
+	} else {
+		like := "%" + q + "%"
+		rows, err = db.Query(
+			`SELECT route_id,origin,destination,departure_at,available_until,car_model,raw_json,first_seen
+			 FROM routes
+			 WHERE origin LIKE ? OR destination LIKE ? OR car_model LIKE ?
+			 ORDER BY departure_at DESC LIMIT ? OFFSET ?`,
+			like, like, like, limit, offset)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanRoutes(rows)
+}
+
+func (db *DB) CountSearchRoutes(q string) (int, error) {
+	if q == "" {
+		return db.CountRoutes()
+	}
+	like := "%" + q + "%"
+	var n int
+	err := db.QueryRow(
+		`SELECT COUNT(*) FROM routes WHERE origin LIKE ? OR destination LIKE ? OR car_model LIKE ?`,
+		like, like, like).Scan(&n)
+	return n, err
 }
 
 func (db *DB) CountRoutes() (int, error) {
