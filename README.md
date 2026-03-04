@@ -11,7 +11,7 @@ A lightweight, self-hosted web application that watches [Hertz Freerider](https:
 - 🔐 **Authentication** — register, login, password reset via email
 - 👁️ **Watches** — define origin/destination, optional time window, weekday filter, one-time or repeating
 - 🔔 **Web Push notifications** — VAPID-based push to mobile/desktop browsers
-- 📧 **Email fallback** — notifies via SMTP if no push subscription is registered
+- 📧 **Email fallback** — notifies via Mailgun if no push subscription is registered
 - 🔄 **Background fetcher** — polls the Hertz Freerider API on a configurable interval with jitter and exponential backoff
 - 🗄️ **SQLite** — embedded, disk-based storage; no external database needed
 - 🐳 **Docker-first** — single `docker compose up` to run everything
@@ -76,11 +76,10 @@ All settings are via environment variables (see [`.env.example`](.env.example)).
 | `VAPID_PUBLIC_KEY` | *(auto-generated)* | Web Push public key |
 | `VAPID_PRIVATE_KEY` | *(auto-generated)* | Web Push private key |
 | `VAPID_SUBJECT` | `mailto:admin@example.com` | VAPID contact |
-| `SMTP_HOST` | | SMTP server hostname |
-| `SMTP_PORT` | `587` | SMTP port (587=STARTTLS, 465=TLS) |
-| `SMTP_USER` | | SMTP username |
-| `SMTP_PASS` | | SMTP password |
-| `SMTP_FROM` | | From address |
+| `MAILGUN_API_KEY` | | Mailgun private API key |
+| `MAILGUN_DOMAIN` | | Mailgun sending domain (e.g. `mg.example.com`) |
+| `MAILGUN_FROM` | `noreply@{domain}` | From address |
+| `MAILGUN_REGION` | `us` | `us` or `eu` — must match your Mailgun account region |
 | `FETCH_INTERVAL` | `5m` | API poll interval |
 | `FETCH_JITTER` | `30s` | ± random jitter per interval |
 | `LOG_LEVEL` | `info` | `info` or `debug` |

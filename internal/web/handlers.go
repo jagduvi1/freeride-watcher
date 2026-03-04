@@ -225,8 +225,8 @@ func (s *Server) handleForgotSubmit(w http.ResponseWriter, r *http.Request) {
 	)
 	if err := s.emailer.Send(user.Email, "Reset your Freerider Watcher password", body); err != nil {
 		slog.Warn("reset email failed", "err", err)
-		// If SMTP is not configured, log the link so operators can test locally.
-		slog.Info("RESET LINK (no SMTP configured)", "url", resetURL)
+		// Log the link so operators can test locally when Mailgun is not configured.
+		slog.Info("RESET LINK (Mailgun not configured)", "url", resetURL)
 	}
 
 	s.render(w, r, "forgot", success)

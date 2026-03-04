@@ -1,90 +1,76 @@
-// Package notify sends push and email notifications to users.
 package notify
 
 import (
-	"crypto/tls"
 	"fmt"
-	"net"
-	"net/smtp"
+	"io"
+	"net/http"
+	"net/url"
 	"strings"
+	"time"
 
 	"github.com/jagduvi1/freeride-watcher/internal/config"
 )
 
-// Emailer sends transactional emails via SMTP.
+// Emailer sends transactional emails via the Mailgun HTTP API.
+// No SDK required — a single POST to the Messages API is all it takes.
 type Emailer struct {
-	cfg *config.Config
+	cfg    *config.Config
+	client *http.Client
 }
 
 // NewEmailer creates an Emailer from cfg.
 func NewEmailer(cfg *config.Config) *Emailer {
-	return &Emailer{cfg: cfg}
+	return &Emailer{
+		cfg:    cfg,
+		client: &http.Client{Timeout: 15 * time.Second},
+	}
 }
 
-// Send sends a plain-text email. Returns nil if SMTP is not configured (skips silently).
+// Send posts a plain-text email through Mailgun.
+// Returns nil immediately when Mailgun is not configured.
 func (e *Emailer) Send(to, subject, body string) error {
-	if !e.cfg.SMTPConfigured() {
-		return nil // gracefully skip when SMTP not configured
+	if !e.cfg.MailgunConfigured() {
+		return nil
 	}
 
-	msg := buildMessage(e.cfg.SMTPFrom, to, subject, body)
-	addr := fmt.Sprintf("%s:%d", e.cfg.SMTPHost, e.cfg.SMTPPort)
-
-	var auth smtp.Auth
-	if e.cfg.SMTPUser != "" {
-		auth = smtp.PlainAuth("", e.cfg.SMTPUser, e.cfg.SMTPPass, e.cfg.SMTPHost)
+	from := e.cfg.MailgunFrom
+	if from == "" {
+		from = "Freerider Watcher <noreply@" + e.cfg.MailgunDomain + ">"
 	}
 
-	// Use STARTTLS if port is 587, plain TLS if 465, plain if 25.
-	switch e.cfg.SMTPPort {
-	case 465:
-		return sendTLS(addr, auth, e.cfg.SMTPFrom, to, msg)
-	default:
-		return smtp.SendMail(addr, auth, e.cfg.SMTPFrom, []string{to}, msg)
+	apiBase := mailgunBase(e.cfg.MailgunRegion)
+	endpoint := fmt.Sprintf("%s/v3/%s/messages", apiBase, e.cfg.MailgunDomain)
+
+	form := url.Values{}
+	form.Set("from", from)
+	form.Set("to", to)
+	form.Set("subject", subject)
+	form.Set("text", body)
+
+	req, err := http.NewRequest(http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return fmt.Errorf("mailgun: build request: %w", err)
 	}
+	req.SetBasicAuth("api", e.cfg.MailgunAPIKey)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("mailgun: send: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("mailgun: status %d: %s", resp.StatusCode, strings.TrimSpace(string(errBody)))
+	}
+	return nil
 }
 
-func sendTLS(addr string, auth smtp.Auth, from, to string, msg []byte) error {
-	host, _, _ := net.SplitHostPort(addr)
-	conn, err := tls.Dial("tcp", addr, &tls.Config{ServerName: host})
-	if err != nil {
-		return err
+// mailgunBase returns the Mailgun API base URL for the given region.
+func mailgunBase(region string) string {
+	if strings.EqualFold(region, "eu") {
+		return "https://api.eu.mailgun.net"
 	}
-	c, err := smtp.NewClient(conn, host)
-	if err != nil {
-		return err
-	}
-	defer c.Quit() //nolint:errcheck
-	if auth != nil {
-		if err := c.Auth(auth); err != nil {
-			return err
-		}
-	}
-	if err := c.Mail(from); err != nil {
-		return err
-	}
-	if err := c.Rcpt(to); err != nil {
-		return err
-	}
-	w, err := c.Data()
-	if err != nil {
-		return err
-	}
-	_, err = w.Write(msg)
-	if err != nil {
-		return err
-	}
-	return w.Close()
-}
-
-func buildMessage(from, to, subject, body string) []byte {
-	var sb strings.Builder
-	sb.WriteString("From: " + from + "\r\n")
-	sb.WriteString("To: " + to + "\r\n")
-	sb.WriteString("Subject: " + subject + "\r\n")
-	sb.WriteString("MIME-Version: 1.0\r\n")
-	sb.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
-	sb.WriteString("\r\n")
-	sb.WriteString(body)
-	return []byte(sb.String())
+	return "https://api.mailgun.net"
 }
