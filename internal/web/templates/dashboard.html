@@ -178,7 +178,9 @@ async function checkPushState() {
         '<button onclick="subscribePush()">Enable push on this device</button>';
     }
   } catch(e) {
-    el.innerHTML = '<p>Could not check push status: ' + e.message + '</p>';
+    const p = document.createElement('p');
+    p.textContent = 'Could not check push status: ' + e.message;
+    el.replaceChildren(p);
   }
 }
 

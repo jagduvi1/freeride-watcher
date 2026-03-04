@@ -339,6 +339,18 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, page string, dat
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+	// Pico.css is loaded from jsDelivr; inline scripts are used in templates.
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'self'; "+
+			"style-src 'self' https://cdn.jsdelivr.net; "+
+			"script-src 'self' 'unsafe-inline'; "+
+			"img-src 'self' data:; "+
+			"font-src 'self' https://cdn.jsdelivr.net; "+
+			"connect-src 'self'; "+
+			"frame-ancestors 'none'")
+	if strings.HasPrefix(s.cfg.BaseURL, "https://") {
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+	}
 
 	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
 		slog.Error("template render", "page", page, "err", err)
@@ -385,8 +397,13 @@ func (s *Server) redirect(w http.ResponseWriter, r *http.Request, url, flash, fl
 }
 
 func clientIP(r *http.Request) string {
+	// When behind a trusted reverse proxy (e.g. Traefik), the proxy appends
+	// the real client IP as the last entry in X-Forwarded-For. Taking the
+	// rightmost value prevents clients from spoofing rate-limit identity by
+	// injecting fake IPs at the start of the header.
 	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		return strings.SplitN(fwd, ",", 2)[0]
+		parts := strings.Split(fwd, ",")
+		return strings.TrimSpace(parts[len(parts)-1])
 	}
 	host, _, _ := net.SplitHostPort(r.RemoteAddr)
 	return host
