@@ -120,6 +120,7 @@ func (f *Fetcher) runOnce(ctx context.Context) error {
 		}
 		if isNew {
 			newCount++
+			slog.Info("new route found", "route_id", r.RouteID, "origin", r.Origin, "destination", r.Destination, "departure", r.DepartureAt.Format("2006-01-02 15:04"))
 			f.notify(ctx, r)
 		}
 	}
@@ -150,13 +151,34 @@ type apiRoute struct {
 	TransportOfferID int64       `json:"transportOfferId"`
 	PickupLocation   apiLocation `json:"pickupLocation"`
 	ReturnLocation   apiLocation `json:"returnLocation"`
-	AvailableAt      time.Time   `json:"availableAt"`
-	LatestReturn     time.Time   `json:"latestReturn"`
-	ExpireTime       time.Time   `json:"expireTime"`
+	AvailableAt      hertzTime   `json:"availableAt"`
+	LatestReturn     hertzTime   `json:"latestReturn"`
+	ExpireTime       hertzTime   `json:"expireTime"`
 	CarModel         string      `json:"carModel"`
 	PublicDescription string     `json:"publicDescription"`
 	Distance         float64     `json:"distance"`
 	TravelTime       int         `json:"travelTime"`
+}
+
+// hertzTime unmarshals timestamps that the Hertz API returns without a
+// timezone suffix (e.g. "2026-03-03T11:45:00"). Falls back to RFC3339 if
+// the suffix is present. Times without a zone are treated as UTC.
+type hertzTime struct{ time.Time }
+
+func (t *hertzTime) UnmarshalJSON(data []byte) error {
+	s := strings.Trim(string(data), `"`)
+	if s == "" || s == "null" {
+		return nil
+	}
+	if parsed, err := time.Parse(time.RFC3339, s); err == nil {
+		t.Time = parsed
+		return nil
+	}
+	if parsed, err := time.Parse("2006-01-02T15:04:05", s); err == nil {
+		t.Time = parsed.UTC()
+		return nil
+	}
+	return fmt.Errorf("cannot parse hertz timestamp %q", s)
 }
 
 type apiLocation struct {
@@ -176,6 +198,8 @@ func (l apiLocation) displayCity() string {
 }
 
 func (f *Fetcher) fetch(ctx context.Context) ([]db.Route, error) {
+	slog.Info("fetching routes", "url", f.cfg.HertzAPIURL)
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.cfg.HertzAPIURL, nil)
 	if err != nil {
 		return nil, err
@@ -192,8 +216,11 @@ func (f *Fetcher) fetch(ctx context.Context) ([]db.Route, error) {
 	}
 	defer resp.Body.Close()
 
+	slog.Info("api response", "status", resp.StatusCode)
+
 	if resp.StatusCode == http.StatusNotModified {
-		return nil, nil // nothing changed
+		slog.Info("routes unchanged (304 Not Modified)")
+		return nil, nil
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
@@ -207,10 +234,14 @@ func (f *Fetcher) fetch(ctx context.Context) ([]db.Route, error) {
 		return nil, fmt.Errorf("read body: %w", err)
 	}
 
-	// Log raw response on first successful fetch for operator visibility.
 	slog.Debug("api raw response (first 512 bytes)", "body", preview(body, 512))
 
-	return parseRoutes(body)
+	routes, parseErr := parseRoutes(body)
+	if parseErr != nil {
+		return nil, parseErr
+	}
+	slog.Info("routes parsed", "count", len(routes))
+	return routes, nil
 }
 
 func parseRoutes(body []byte) ([]db.Route, error) {
@@ -232,8 +263,8 @@ func parseRoutes(body []byte) ([]db.Route, error) {
 				RouteID:        fmt.Sprintf("hertz-%d", ar.ID),
 				Origin:         ar.PickupLocation.displayCity(),
 				Destination:    ar.ReturnLocation.displayCity(),
-				DepartureAt:    ar.AvailableAt,
-				AvailableUntil: ar.LatestReturn,
+				DepartureAt:    ar.AvailableAt.Time,
+				AvailableUntil: ar.LatestReturn.Time,
 				CarModel:       ar.CarModel,
 				RawJSON:        string(raw),
 			}
@@ -253,6 +284,38 @@ func parseRoutes(body []byte) ([]db.Route, error) {
 }
 
 // ── Matching & notification ───────────────────────────────────────────────────
+
+// ScanWatchAgainstExistingRoutes checks all cached routes in the DB against
+// a single watch and sends notifications for any matches not already notified.
+// Called after a watch is created or edited so the user gets immediate results.
+func (f *Fetcher) ScanWatchAgainstExistingRoutes(ctx context.Context, watch db.Watch) {
+	routes, err := f.db.GetAllRoutes()
+	if err != nil {
+		slog.Warn("scan watch: get routes failed", "err", err)
+		return
+	}
+
+	matched := 0
+	for _, route := range routes {
+		if !matcher.Match(route, watch) {
+			continue
+		}
+		already, err := f.db.HasBeenNotified(watch.UserID, route.RouteID)
+		if err != nil || already {
+			continue
+		}
+		slog.Info("scan watch matched existing route", "watch_id", watch.ID, "route_id", route.RouteID, "origin", route.Origin, "destination", route.Destination)
+		if err := f.db.MarkNotified(watch.UserID, route.RouteID); err != nil {
+			slog.Warn("mark notified failed", "err", err)
+			continue
+		}
+		f.sendNotification(ctx, watch.UserID, route)
+		matched++
+	}
+	if matched > 0 {
+		slog.Info("scan watch complete", "watch_id", watch.ID, "matched", matched)
+	}
+}
 
 func (f *Fetcher) notify(ctx context.Context, route db.Route) {
 	watches, err := f.db.GetAllActiveWatches()
@@ -274,58 +337,65 @@ func (f *Fetcher) notify(ctx context.Context, route db.Route) {
 		notifyUsers[w.UserID] = w
 	}
 
+	if len(notifyUsers) > 0 {
+		slog.Info("notifying users", "route_id", route.RouteID, "user_count", len(notifyUsers))
+	}
+
 	for userID, watch := range notifyUsers {
 		if err := f.db.MarkNotified(userID, route.RouteID); err != nil {
 			slog.Warn("mark notified failed", "err", err)
 			continue
 		}
-
-		payload := notify.PushPayload{
-			Title: "🚗 Freerider route available!",
-			Body: fmt.Sprintf("%s → %s on %s",
-				route.Origin, route.Destination,
-				route.DepartureAt.Format("Mon Jan 2 at 15:04")),
-			URL: "/dashboard",
-		}
-
-		// Send push to all registered devices for this user.
-		subs, err := f.db.GetPushSubscriptionsByUser(userID)
-		if err != nil {
-			slog.Warn("get push subs failed", "user_id", userID, "err", err)
-		}
-		for _, sub := range subs {
-			if err := f.pusher.Send(sub, payload); err != nil {
-				if err == notify.ErrGone {
-					_ = f.db.DeletePushSubscriptionByEndpoint(sub.Endpoint)
-				} else {
-					slog.Warn("push send failed", "user_id", userID, "err", err)
-				}
-			}
-		}
-
-		// Email fallback if user has no active push subscriptions.
-		if len(subs) == 0 && f.emailer != nil {
-			user, _ := f.db.GetUserByID(userID)
-			if user != nil {
-				body := fmt.Sprintf(
-					"Hello,\n\nA Hertz Freerider route matching your watch was found:\n\n"+
-						"  %s → %s\n  Available: %s\n  Car: %s\n\n"+
-						"Log in at %s to see all routes.\n\n"+
-						"— Freerider Watcher\n",
-					route.Origin, route.Destination,
-					route.DepartureAt.Format("Mon Jan 2 2006 at 15:04"),
-					route.CarModel,
-					f.cfg.BaseURL,
-				)
-				if err := f.emailer.Send(user.Email, "Freerider route available!", body); err != nil {
-					slog.Warn("email send failed", "user_id", userID, "err", err)
-				}
-			}
-		}
+		f.sendNotification(ctx, userID, route)
 
 		// Deactivate one-time watches.
 		if watch.OneTime {
 			_ = f.db.DeactivateWatch(watch.ID)
+		}
+	}
+}
+
+// sendNotification delivers a push (and email fallback) to a single user for a route.
+func (f *Fetcher) sendNotification(ctx context.Context, userID int64, route db.Route) {
+	payload := notify.PushPayload{
+		Title: "🚗 Freerider route available!",
+		Body: fmt.Sprintf("%s → %s on %s",
+			route.Origin, route.Destination,
+			route.DepartureAt.Format("Mon Jan 2 at 15:04")),
+		URL: "/dashboard",
+	}
+
+	subs, err := f.db.GetPushSubscriptionsByUser(userID)
+	if err != nil {
+		slog.Warn("get push subs failed", "user_id", userID, "err", err)
+	}
+	for _, sub := range subs {
+		if err := f.pusher.Send(sub, payload); err != nil {
+			if err == notify.ErrGone {
+				_ = f.db.DeletePushSubscriptionByEndpoint(sub.Endpoint)
+			} else {
+				slog.Warn("push send failed", "user_id", userID, "err", err)
+			}
+		}
+	}
+
+	// Email fallback if user has no active push subscriptions.
+	if len(subs) == 0 && f.emailer != nil {
+		user, _ := f.db.GetUserByID(userID)
+		if user != nil {
+			body := fmt.Sprintf(
+				"Hello,\n\nA Hertz Freerider route matching your watch was found:\n\n"+
+					"  %s → %s\n  Available: %s\n  Car: %s\n\n"+
+					"Log in at %s to see all routes.\n\n"+
+					"— Freerider Watcher\n",
+				route.Origin, route.Destination,
+				route.DepartureAt.Format("Mon Jan 2 2006 at 15:04"),
+				route.CarModel,
+				f.cfg.BaseURL,
+			)
+			if err := f.emailer.Send(user.Email, "Freerider route available!", body); err != nil {
+				slog.Warn("email send failed", "user_id", userID, "err", err)
+			}
 		}
 	}
 }

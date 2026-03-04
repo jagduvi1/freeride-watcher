@@ -141,6 +141,8 @@ func (s *Server) buildMux() *http.ServeMux {
 	mux.Handle("GET /dashboard", s.sessionMiddleware(s.requireAuth(http.HandlerFunc(s.handleDashboard))))
 	mux.Handle("GET /watches/new", s.sessionMiddleware(s.requireAuth(http.HandlerFunc(s.handleWatchNewForm))))
 	mux.Handle("POST /watches/new", s.sessionMiddleware(s.requireAuth(s.csrfMiddleware(http.HandlerFunc(s.handleWatchNewSubmit)))))
+	mux.Handle("GET /watches/{id}/edit", s.sessionMiddleware(s.requireAuth(http.HandlerFunc(s.handleWatchEditForm))))
+	mux.Handle("POST /watches/{id}/edit", s.sessionMiddleware(s.requireAuth(s.csrfMiddleware(http.HandlerFunc(s.handleWatchEditSubmit)))))
 	mux.Handle("POST /watches/{id}/delete", s.sessionMiddleware(s.requireAuth(s.csrfMiddleware(http.HandlerFunc(s.handleWatchDelete)))))
 
 	// Push API (JSON, CSRF via header).
@@ -280,11 +282,19 @@ func (s *Server) loadTemplates() error {
 			}
 			return strings.Join(out, ", ")
 		},
+		"hasWeekday": func(weekdays, day string) bool {
+			for _, d := range strings.Split(weekdays, ",") {
+				if strings.TrimSpace(d) == day {
+					return true
+				}
+			}
+			return false
+		},
 	}
 
 	pages := []string{
 		"home", "login", "register", "forgot", "reset",
-		"dashboard", "watch_new", "routes",
+		"dashboard", "watch_new", "watch_edit", "routes",
 	}
 	s.templates = make(map[string]*template.Template, len(pages))
 	for _, page := range pages {
