@@ -15,15 +15,10 @@
     <header>
       <strong>📱 Push notifications</strong>
     </header>
+    {{/* Per-device state is determined by JS below; server-side count is informational only. */}}
+    <div id="push-this-device"><p><small>Checking push status…</small></p></div>
     {{if gt .PushSubCount 0}}
-      <p>✅ Push enabled on <strong>{{.PushSubCount}}</strong> device(s).</p>
-      <div class="push-actions">
-        <button id="btn-test-push" class="outline" onclick="testPush()">Send test notification</button>
-        <button id="btn-unsub-push" class="outline secondary" onclick="unsubscribePush()">Disable on this device</button>
-      </div>
-    {{else}}
-      <p>Push notifications are <strong>not enabled</strong> on this device.</p>
-      <button id="btn-sub-push" onclick="subscribePush()">Enable push notifications</button>
+    <p><small>Enabled on <strong>{{.PushSubCount}}</strong> device(s) in total.</small></p>
     {{end}}
     <small id="push-status"></small>
   </article>
@@ -156,10 +151,38 @@ async function testPush() {
   }
 }
 
-// Register SW on page load.
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch(() => {});
+// Detect whether THIS device/browser has an active push subscription,
+// then render the appropriate button regardless of other devices.
+async function checkPushState() {
+  const el = document.getElementById('push-this-device');
+  if (!el) return;
+
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    el.innerHTML = '<p>Push notifications are not supported in this browser.</p>';
+    return;
+  }
+  try {
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      el.innerHTML =
+        '<p>✅ Enabled on this device.</p>' +
+        '<div class="push-actions">' +
+          '<button class="outline" onclick="testPush()">Send test notification</button>' +
+          '<button class="outline secondary" onclick="unsubscribePush()">Disable on this device</button>' +
+        '</div>';
+    } else {
+      el.innerHTML =
+        '<p>Not enabled on this device.</p>' +
+        '<button onclick="subscribePush()">Enable push on this device</button>';
+    }
+  } catch(e) {
+    el.innerHTML = '<p>Could not check push status: ' + e.message + '</p>';
+  }
 }
+
+checkPushState();
 </script>
 {{end}}
 {{end}}
