@@ -190,11 +190,23 @@ type apiLocation struct {
 	GeoLon  float64 `json:"geoLon"`
 }
 
-func (l apiLocation) displayCity() string {
-	if l.City != "" {
-		return l.City
+// displayName returns the most human-readable name for a location.
+// It prefers the full location Name over the bare City field, since Name
+// contains the meaningful identifier (e.g. "Göteborg Landvetter Flygplats"
+// vs the city field "Landvetter"). Provider/kiosk suffixes after " / ", "/",
+// or " & " are stripped (e.g. "/ Self Service Kiosk", "/ Volvo").
+func (l apiLocation) displayName() string {
+	name := strings.TrimSpace(l.Name)
+	if name == "" {
+		return strings.TrimSpace(l.City)
 	}
-	return l.Name
+	for _, sep := range []string{" / ", "/", " & "} {
+		if idx := strings.Index(name, sep); idx > 0 {
+			name = strings.TrimSpace(name[:idx])
+			break
+		}
+	}
+	return name
 }
 
 func (f *Fetcher) fetch(ctx context.Context) ([]db.Route, error) {
@@ -261,23 +273,25 @@ func parseRoutes(body []byte) ([]db.Route, error) {
 			raw, _ := json.Marshal(ar)
 			r := db.Route{
 				RouteID:        fmt.Sprintf("hertz-%d", ar.ID),
-				Origin:         ar.PickupLocation.displayCity(),
-				Destination:    ar.ReturnLocation.displayCity(),
+				Origin:         ar.PickupLocation.displayName(),
+				Destination:    ar.ReturnLocation.displayName(),
 				DepartureAt:    ar.AvailableAt.Time,
 				AvailableUntil: ar.LatestReturn.Time,
 				CarModel:       ar.CarModel,
 				RawJSON:        string(raw),
 			}
-			// Fallback: if city is blank, use group-level names.
+			// Fallback to group-level names if individual location name is blank.
 			if r.Origin == "" {
 				r.Origin = g.PickupLocationName
 			}
 			if r.Destination == "" {
 				r.Destination = g.ReturnLocationName
 			}
-			if !r.DepartureAt.IsZero() {
-				routes = append(routes, r)
+			if r.DepartureAt.IsZero() {
+				slog.Warn("route skipped: missing departure time", "route_id", ar.ID, "origin", r.Origin, "destination", r.Destination)
+				continue
 			}
+			routes = append(routes, r)
 		}
 	}
 	return routes, nil
