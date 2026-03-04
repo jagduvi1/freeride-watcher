@@ -1,0 +1,47 @@
+# Shared Traefik reverse proxy — run this ONCE on the VM.
+#
+# ── How it works with Cloudflare ─────────────────────────────────────────────
+# Cloudflare is the SSL terminator: browsers talk HTTPS to Cloudflare, and
+# Cloudflare forwards plain HTTP to this VM on port 80. Traefik routes each
+# request to the correct container by hostname. No certificates are needed
+# on the server — Cloudflare's edge certificate handles browser trust.
+#
+# In Cloudflare for each domain:
+#   - DNS A record → VM public IP, orange cloud (Proxied) ON
+#   - SSL/TLS → Overview → mode set to "Full" (not Flexible, not Strict)
+#   - SSL/TLS → Edge Certificates → "Always Use HTTPS" ON
+#
+# ── Quick start ───────────────────────────────────────────────────────────────
+#   docker network create web
+#   docker compose up -d
+
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      # Route only containers that explicitly opt in with traefik.enable=true.
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=web
+
+      # Single HTTP entrypoint — Cloudflare handles HTTPS in front of us.
+      - --entrypoints.web.address=:80
+
+      # Logging.
+      - --log.level=INFO
+      - --accesslog=true
+
+    ports:
+      - "80:80"   # Cloudflare forwards here; only Cloudflare IPs should reach this port
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    networks:
+      - web
+
+networks:
+  web:
+    external: true   # created once with: docker network create web
