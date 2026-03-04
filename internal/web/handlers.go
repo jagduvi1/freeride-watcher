@@ -605,16 +605,158 @@ func (s *Server) handlePushTest(w http.ResponseWriter, r *http.Request) {
 
 // ── Routes (debug) ────────────────────────────────────────────────────────────
 
+const routesPageSize = 50
+
 func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
-	routes, err := s.db.GetAllRoutes()
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * routesPageSize
+
+	total, err := s.db.CountSearchRoutes(q)
 	if err != nil {
-		slog.Error("get routes", "err", err)
-		routes = nil
+		slog.Error("count routes", "err", err)
+	}
+	routes, routeErr := s.db.SearchRoutes(q, routesPageSize, offset)
+	if routeErr != nil {
+		slog.Error("get routes", "err", routeErr)
+	}
+
+	totalPages := (total + routesPageSize - 1) / routesPageSize
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
+	type routesData struct {
+		Routes     []db.Route
+		Query      string
+		Page       int
+		TotalPages int
+		Total      int
+		PrevPage   int
+		NextPage   int
+	}
+	prev, next := page-1, page+1
+	if prev < 1 {
+		prev = 0
+	}
+	if next > totalPages {
+		next = 0
 	}
 	s.render(w, r, "routes", TemplateData{
 		Title: "Cached routes",
-		Data:  routes,
+		Data: routesData{
+			Routes:     routes,
+			Query:      q,
+			Page:       page,
+			TotalPages: totalPages,
+			Total:      total,
+			PrevPage:   prev,
+			NextPage:   next,
+		},
 	})
+}
+
+// ── Admin ─────────────────────────────────────────────────────────────────────
+
+func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request) {
+	users, err := s.db.GetAllUsers()
+	if err != nil {
+		slog.Error("admin get users", "err", err)
+	}
+
+	watches, err := s.db.GetAllActiveWatches()
+	if err != nil {
+		slog.Error("admin get watches", "err", err)
+	}
+
+	// Build a map of userID→email for the watches table.
+	emailByID := make(map[int64]string, len(users))
+	for _, u := range users {
+		emailByID[u.ID] = u.Email
+	}
+
+	history, err := s.db.GetNotificationHistory(100)
+	if err != nil {
+		slog.Error("admin get history", "err", err)
+	}
+
+	stats, err := s.db.GetSystemStats()
+	if err != nil {
+		slog.Error("admin get stats", "err", err)
+	}
+	fetchStatus := s.fetcher.GetStatus()
+	if fetchStatus != nil {
+		stats.LastFetchAt = fetchStatus.LastFetchAt
+		stats.LastFetchError = fetchStatus.LastFetchError
+	}
+
+	type watchWithEmail struct {
+		db.Watch
+		OwnerEmail string
+	}
+	wwe := make([]watchWithEmail, len(watches))
+	for i, w := range watches {
+		wwe[i] = watchWithEmail{Watch: w, OwnerEmail: emailByID[w.UserID]}
+	}
+
+	type adminData struct {
+		Stats   db.SystemStats
+		Users   []db.AdminUser
+		Watches []watchWithEmail
+		History []db.NotificationHistoryRow
+	}
+
+	s.render(w, r, "admin", TemplateData{
+		Title: "Admin",
+		Data: adminData{
+			Stats:   stats,
+			Users:   users,
+			Watches: wwe,
+			History: history,
+		},
+	})
+}
+
+func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	// Prevent admin from deleting themselves.
+	if self := userFromCtx(r); self != nil && self.ID == id {
+		s.redirect(w, r, "/admin", "You cannot delete your own account.", "error")
+		return
+	}
+
+	if err := s.db.DeleteUser(id); err != nil {
+		slog.Error("admin delete user", "err", err)
+		s.redirect(w, r, "/admin", "Failed to delete user.", "error")
+		return
+	}
+	s.redirect(w, r, "/admin", "User deleted.", "success")
+}
+
+func (s *Server) handleAdminDeleteWatch(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.db.DeleteWatchByID(id); err != nil {
+		slog.Error("admin delete watch", "err", err)
+		s.redirect(w, r, "/admin", "Failed to delete watch.", "error")
+		return
+	}
+	s.redirect(w, r, "/admin", "Watch deleted.", "success")
 }
 
 // ── Session helpers ───────────────────────────────────────────────────────────

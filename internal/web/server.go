@@ -41,6 +41,7 @@ type TemplateData struct {
 	VAPIDPublicKey string
 	Flash          string
 	FlashType      string
+	IsAdmin        bool
 	Data           any
 }
 
@@ -154,6 +155,11 @@ func (s *Server) buildMux() *http.ServeMux {
 	// Debug route list (authenticated).
 	mux.Handle("GET /routes", s.sessionMiddleware(s.requireAuth(http.HandlerFunc(s.handleRoutes))))
 
+	// Admin area (authenticated + admin role).
+	mux.Handle("GET /admin", s.sessionMiddleware(s.requireAuth(s.requireAdmin(http.HandlerFunc(s.handleAdmin)))))
+	mux.Handle("POST /admin/users/{id}/delete", s.sessionMiddleware(s.requireAuth(s.requireAdmin(s.csrfMiddleware(http.HandlerFunc(s.handleAdminDeleteUser))))))
+	mux.Handle("POST /admin/watches/{id}/delete", s.sessionMiddleware(s.requireAuth(s.requireAdmin(s.csrfMiddleware(http.HandlerFunc(s.handleAdminDeleteWatch))))))
+
 	// Health check (no auth).
 	mux.HandleFunc("GET /health", s.handleHealth)
 
@@ -194,6 +200,17 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if userFromCtx(r) == nil {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) requireAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user := userFromCtx(r)
+		if user == nil || !s.cfg.IsAdmin(user.Email) {
+			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -295,7 +312,7 @@ func (s *Server) loadTemplates() error {
 
 	pages := []string{
 		"home", "login", "register", "forgot", "reset",
-		"dashboard", "watch_new", "watch_edit", "watch_detail", "routes",
+		"dashboard", "watch_new", "watch_edit", "watch_detail", "routes", "admin",
 	}
 	s.templates = make(map[string]*template.Template, len(pages))
 	for _, page := range pages {
@@ -330,6 +347,9 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, page string, dat
 		}
 	}
 	data.VAPIDPublicKey = s.cfg.VAPIDPublicKey
+	if data.User != nil {
+		data.IsAdmin = s.cfg.IsAdmin(data.User.Email)
+	}
 
 	tmpl, ok := s.templates[page]
 	if !ok {

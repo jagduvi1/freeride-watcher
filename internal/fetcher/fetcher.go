@@ -147,17 +147,17 @@ type apiGroup struct {
 }
 
 type apiRoute struct {
-	ID               int64       `json:"id"`
-	TransportOfferID int64       `json:"transportOfferId"`
-	PickupLocation   apiLocation `json:"pickupLocation"`
-	ReturnLocation   apiLocation `json:"returnLocation"`
-	AvailableAt      hertzTime   `json:"availableAt"`
-	LatestReturn     hertzTime   `json:"latestReturn"`
-	ExpireTime       hertzTime   `json:"expireTime"`
-	CarModel         string      `json:"carModel"`
-	PublicDescription string     `json:"publicDescription"`
-	Distance         float64     `json:"distance"`
-	TravelTime       int         `json:"travelTime"`
+	ID                int64       `json:"id"`
+	TransportOfferID  int64       `json:"transportOfferId"`
+	PickupLocation    apiLocation `json:"pickupLocation"`
+	ReturnLocation    apiLocation `json:"returnLocation"`
+	AvailableAt       hertzTime   `json:"availableAt"`
+	LatestReturn      hertzTime   `json:"latestReturn"`
+	ExpireTime        hertzTime   `json:"expireTime"`
+	CarModel          string      `json:"carModel"`
+	PublicDescription string      `json:"publicDescription"`
+	Distance          float64     `json:"distance"`
+	TravelTime        int         `json:"travelTime"`
 }
 
 // hertzTime unmarshals timestamps that the Hertz API returns without a
