@@ -4,7 +4,6 @@ package config
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"time"
 )
 
@@ -17,12 +16,11 @@ type Config struct {
 	// Persistence
 	DBPath string
 
-	// SMTP (optional — omit to disable email)
-	SMTPHost string
-	SMTPPort int
-	SMTPUser string
-	SMTPPass string
-	SMTPFrom string
+	// Mailgun (optional — omit to disable email fallback)
+	MailgunAPIKey string
+	MailgunDomain string
+	MailgunFrom   string
+	MailgunRegion string // "us" (default) or "eu"
 
 	// Web Push VAPID keys (generated and persisted in DB if not provided)
 	VAPIDPublicKey  string
@@ -46,10 +44,10 @@ func Load() (*Config, error) {
 		BaseURL:    env("BASE_URL", "http://localhost:8080"),
 		DBPath:     env("DB_PATH", "/data/freeride.db"),
 
-		SMTPHost: env("SMTP_HOST", ""),
-		SMTPUser: env("SMTP_USER", ""),
-		SMTPPass: env("SMTP_PASS", ""),
-		SMTPFrom: env("SMTP_FROM", ""),
+		MailgunAPIKey: env("MAILGUN_API_KEY", ""),
+		MailgunDomain: env("MAILGUN_DOMAIN", ""),
+		MailgunFrom:   env("MAILGUN_FROM", ""),
+		MailgunRegion: env("MAILGUN_REGION", "us"),
 
 		VAPIDPublicKey:  env("VAPID_PUBLIC_KEY", ""),
 		VAPIDPrivateKey: env("VAPID_PRIVATE_KEY", ""),
@@ -64,11 +62,6 @@ func Load() (*Config, error) {
 
 	var err error
 
-	cfg.SMTPPort, err = envInt("SMTP_PORT", 587)
-	if err != nil {
-		return nil, fmt.Errorf("SMTP_PORT: %w", err)
-	}
-
 	cfg.FetchInterval, err = envDuration("FETCH_INTERVAL", 5*time.Minute)
 	if err != nil {
 		return nil, fmt.Errorf("FETCH_INTERVAL: %w", err)
@@ -82,9 +75,9 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-// SMTPConfigured returns true if enough SMTP settings are present to send mail.
-func (c *Config) SMTPConfigured() bool {
-	return c.SMTPHost != "" && c.SMTPFrom != ""
+// MailgunConfigured returns true when the minimum Mailgun settings are present.
+func (c *Config) MailgunConfigured() bool {
+	return c.MailgunAPIKey != "" && c.MailgunDomain != ""
 }
 
 func env(key, fallback string) string {
@@ -92,14 +85,6 @@ func env(key, fallback string) string {
 		return v
 	}
 	return fallback
-}
-
-func envInt(key string, fallback int) (int, error) {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback, nil
-	}
-	return strconv.Atoi(v)
 }
 
 func envDuration(key string, fallback time.Duration) (time.Duration, error) {
