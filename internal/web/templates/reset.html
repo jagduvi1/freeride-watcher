@@ -1,0 +1,27 @@
+{{define "content"}}
+<div class="auth-card">
+  <hgroup>
+    <h2>Set new password</h2>
+    <p>Choose a strong password.</p>
+  </hgroup>
+
+  {{if .Data}}
+  <form method="POST" action="/reset/{{.Data}}">
+    <label>
+      New password
+      <input type="password" name="password" autocomplete="new-password"
+             required minlength="8" placeholder="At least 8 characters" autofocus>
+    </label>
+    <label>
+      Confirm password
+      <input type="password" name="confirm" autocomplete="new-password" required>
+    </label>
+    <button type="submit">Update password</button>
+  </form>
+  {{end}}
+
+  <div class="auth-links">
+    <a href="/login">Back to login</a>
+  </div>
+</div>
+{{end}}

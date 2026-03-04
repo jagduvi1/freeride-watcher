@@ -1,0 +1,56 @@
+{{define "base"}}<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Track free Hertz Freerider transport routes and get notified when a match is found.">
+  <title>{{.Title}} — Freerider Watcher</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#1a1a2e">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><strong><a href="/" class="brand">🚗 Freerider Watcher</a></strong></li>
+      </ul>
+      <ul>
+        {{if .User}}
+          <li><a href="/dashboard">Dashboard</a></li>
+          <li><a href="/routes">Routes</a></li>
+          <li>
+            <form method="POST" action="/logout" style="margin:0">
+              <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+              <button type="submit" class="outline secondary small-btn">Logout</button>
+            </form>
+          </li>
+        {{else}}
+          <li><a href="/login">Log in</a></li>
+          <li><a href="/register" role="button" class="outline">Register</a></li>
+        {{end}}
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <div class="container">
+      {{if .Flash}}
+      <div class="flash flash-{{.FlashType}}" role="alert">{{.Flash}}</div>
+      {{end}}
+      {{template "content" .}}
+    </div>
+  </main>
+
+  <footer>
+    <div class="container">
+      <small>
+        Freerider Watcher — open source on
+        <a href="https://github.com/jagduvi1/freeride-watcher" target="_blank" rel="noopener">GitHub</a>
+        · Data from <a href="https://www.hertzfreerider.se" target="_blank" rel="noopener">Hertz Freerider</a>
+      </small>
+    </div>
+  </footer>
+</body>
+</html>{{end}}

@@ -1,0 +1,106 @@
+/* ── Freerider Watcher — minimal stylesheet ──────────────────────────────── */
+:root {
+  --brand: #1a1a2e;
+  --brand-light: #16213e;
+  --accent: #0f3460;
+  --success-bg: #d4edda;
+  --success-border: #c3e6cb;
+  --success-text: #155724;
+  --error-bg: #f8d7da;
+  --error-border: #f5c6cb;
+  --error-text: #721c24;
+}
+
+/* ── Layout ── */
+body { min-height: 100vh; display: flex; flex-direction: column; }
+main { flex: 1; padding: 1rem 0; }
+header, footer { background: var(--brand); color: #fff; }
+header nav { padding: 0.75rem 1rem; }
+footer { padding: 0.75rem 1rem; margin-top: auto; }
+footer a, footer small { color: #ccc; }
+
+.container { max-width: 960px; margin: 0 auto; padding: 0 1rem; }
+
+/* ── Nav brand ── */
+a.brand { color: #fff !important; text-decoration: none; font-size: 1.1rem; }
+nav ul li a { color: #ddd; }
+nav ul li a:hover { color: #fff; }
+
+/* ── Flash messages ── */
+.flash {
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  border: 1px solid;
+}
+.flash-success { background: var(--success-bg); border-color: var(--success-border); color: var(--success-text); }
+.flash-error   { background: var(--error-bg);   border-color: var(--error-border);   color: var(--error-text); }
+
+/* ── Auth cards ── */
+.auth-card { max-width: 420px; margin: 2rem auto; }
+.auth-card form button[type=submit] { width: 100%; margin-top: 0.5rem; }
+.auth-links { text-align: center; margin-top: 1rem; font-size: 0.9rem; }
+
+/* ── Hero ── */
+.hero { text-align: center; padding: 3rem 1rem 2rem; }
+.hero h1 { font-size: clamp(1.8rem, 5vw, 2.8rem); }
+.hero-actions { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 1.5rem; }
+
+/* ── Status bar ── */
+.status-bar { margin: 1.5rem 0; }
+.status-bar article { padding: 1rem 1.25rem; }
+.error-text { color: var(--error-text); }
+
+/* ── Feature grid ── */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+/* ── Dashboard ── */
+.dash-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem; }
+.push-section { margin-bottom: 1.5rem; }
+.push-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
+
+/* ── Watches grid ── */
+.watches-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+.watch-card { padding: 1rem; }
+.watch-card header { margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.route-label { font-weight: 600; font-size: 1.05rem; }
+.watch-inactive { opacity: 0.6; }
+.badge {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  background: #e9ecef;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.watch-details { font-size: 0.9rem; }
+.detail-row { display: flex; gap: 0.5rem; margin-bottom: 0.2rem; }
+.detail-row .label { color: #666; min-width: 90px; }
+
+/* ── Watch form ── */
+.form-page { max-width: 640px; margin: 0 auto; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+@media (max-width: 480px) { .form-row { grid-template-columns: 1fr; } }
+.weekday-grid { display: flex; gap: 1rem; flex-wrap: wrap; }
+.weekday-grid label { display: flex; align-items: center; gap: 0.3rem; font-size: 0.95rem; }
+.form-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem; }
+.required { color: var(--error-text); }
+
+/* ── Routes table ── */
+.table-responsive { overflow-x: auto; }
+
+/* ── Small button (nav logout) ── */
+.small-btn { padding: 0.2rem 0.75rem; font-size: 0.85rem; }
+
+/* ── Empty state ── */
+.empty-state { text-align: center; padding: 2rem; color: #666; }

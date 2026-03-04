@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    volumes:
+      - app-data:/data
+    env_file:
+      - .env
+    environment:
+      - DB_PATH=/data/freeride.db
+
+volumes:
+  app-data:
+    driver: local

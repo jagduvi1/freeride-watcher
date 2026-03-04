@@ -1,0 +1,29 @@
+{{define "content"}}
+<div class="auth-card">
+  <hgroup>
+    <h2>Create an account</h2>
+    <p>Start watching for free routes.</p>
+  </hgroup>
+
+  <form method="POST" action="/register">
+    <label>
+      Email
+      <input type="email" name="email" autocomplete="email" required autofocus>
+    </label>
+    <label>
+      Password
+      <input type="password" name="password" autocomplete="new-password"
+             required minlength="8" placeholder="At least 8 characters">
+    </label>
+    <label>
+      Confirm password
+      <input type="password" name="confirm" autocomplete="new-password" required>
+    </label>
+    <button type="submit">Create account</button>
+  </form>
+
+  <div class="auth-links">
+    Already have an account? <a href="/login">Log in</a>
+  </div>
+</div>
+{{end}}

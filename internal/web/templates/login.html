@@ -1,0 +1,26 @@
+{{define "content"}}
+<div class="auth-card">
+  <hgroup>
+    <h2>Log in</h2>
+    <p>Welcome back!</p>
+  </hgroup>
+
+  <form method="POST" action="/login">
+    <label>
+      Email
+      <input type="email" name="email" autocomplete="email" required autofocus>
+    </label>
+    <label>
+      Password
+      <input type="password" name="password" autocomplete="current-password" required>
+    </label>
+    <button type="submit">Log in</button>
+  </form>
+
+  <div class="auth-links">
+    <a href="/forgot">Forgot password?</a>
+    &nbsp;·&nbsp;
+    <a href="/register">Create an account</a>
+  </div>
+</div>
+{{end}}

@@ -1,0 +1,56 @@
+{{define "content"}}
+<section class="hero">
+  <hgroup>
+    <h1>Never miss a free ride</h1>
+    <p>
+      Hertz Freerider lets you drive rental cars between cities for free —
+      but routes fill up fast. Set up watches and get notified the moment a matching route appears.
+    </p>
+  </hgroup>
+  <div class="hero-actions">
+    {{if .User}}
+      <a href="/dashboard" role="button">Go to Dashboard</a>
+    {{else}}
+      <a href="/register" role="button">Get started for free</a>
+      <a href="/login" role="button" class="outline secondary">Log in</a>
+    {{end}}
+  </div>
+</section>
+
+<section class="status-bar">
+  <article>
+    <header><strong>API Status</strong></header>
+    {{with .Data}}
+      {{with .Status}}
+        {{if .LastFetchAt.IsZero}}
+          <p>⏳ Waiting for first fetch…</p>
+        {{else}}
+          <p>✅ Last fetch: {{fmtTime .LastFetchAt}}</p>
+          {{if .LastFetchError}}
+          <p class="error-text">⚠️ Last error: {{.LastFetchError}}</p>
+          {{end}}
+        {{end}}
+      {{end}}
+      <p><strong>{{.RouteCount}}</strong> routes currently cached</p>
+    {{end}}
+  </article>
+</section>
+
+<section>
+  <h2>How it works</h2>
+  <div class="feature-grid">
+    <article>
+      <h3>1. Create a watch</h3>
+      <p>Specify origin & destination city, optional time window, and whether you want a one-time or repeating alert.</p>
+    </article>
+    <article>
+      <h3>2. We poll the API</h3>
+      <p>Routes are fetched every few minutes from the official Hertz Freerider API with jitter to be a polite client.</p>
+    </article>
+    <article>
+      <h3>3. Get notified</h3>
+      <p>When a matching route appears, you receive a push notification (or email fallback) — once per route, no spam.</p>
+    </article>
+  </div>
+</section>
+{{end}}

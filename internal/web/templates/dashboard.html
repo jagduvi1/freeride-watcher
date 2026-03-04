@@ -1,0 +1,164 @@
+{{define "content"}}
+<div class="dashboard">
+  <div class="dash-header">
+    <hgroup>
+      <h2>Dashboard</h2>
+      <p>Hello, <strong>{{.User.Email}}</strong></p>
+    </hgroup>
+    <a href="/watches/new" role="button">+ New watch</a>
+  </div>
+
+  {{/* ── Push notification section ── */}}
+  {{with .Data}}
+  {{if .PushEnabled}}
+  <article class="push-section" id="push-section">
+    <header>
+      <strong>📱 Push notifications</strong>
+    </header>
+    {{if gt .PushSubCount 0}}
+      <p>✅ Push enabled on <strong>{{.PushSubCount}}</strong> device(s).</p>
+      <div class="push-actions">
+        <button id="btn-test-push" class="outline" onclick="testPush()">Send test notification</button>
+        <button id="btn-unsub-push" class="outline secondary" onclick="unsubscribePush()">Disable on this device</button>
+      </div>
+    {{else}}
+      <p>Push notifications are <strong>not enabled</strong> on this device.</p>
+      <button id="btn-sub-push" onclick="subscribePush()">Enable push notifications</button>
+    {{end}}
+    <small id="push-status"></small>
+  </article>
+  {{end}}
+
+  {{/* ── Watches list ── */}}
+  <section>
+    <h3>Your watches ({{len .Watches}})</h3>
+
+    {{if not .Watches}}
+    <article class="empty-state">
+      <p>No watches yet. <a href="/watches/new">Create your first watch</a> to start tracking routes.</p>
+    </article>
+    {{else}}
+    <div class="watches-grid">
+      {{range .Watches}}
+      <article class="watch-card {{if not .Active}}watch-inactive{{end}}">
+        <header>
+          <span class="route-label">{{.Origin}} → {{.Destination}}</span>
+          {{if not .Active}}<span class="badge">inactive</span>{{end}}
+          {{if .OneTime}}<span class="badge">one-time</span>{{end}}
+        </header>
+        <div class="watch-details">
+          {{if or .EarliestTime .LatestTime}}
+          <div class="detail-row">
+            <span class="label">Time window:</span>
+            <span>
+              {{if .EarliestTime}}from {{.EarliestTime}}{{end}}
+              {{if and .EarliestTime .LatestTime}} – {{end}}
+              {{if .LatestTime}}until {{.LatestTime}}{{end}}
+            </span>
+          </div>
+          {{end}}
+          {{if .Weekdays}}
+          <div class="detail-row">
+            <span class="label">Days:</span>
+            <span>{{weekdayLabel .Weekdays}}</span>
+          </div>
+          {{end}}
+          <div class="detail-row">
+            <span class="label">Created:</span>
+            <span>{{fmtTime .CreatedAt}}</span>
+          </div>
+        </div>
+        <footer>
+          <form method="POST" action="/watches/{{.ID}}/delete"
+                onsubmit="return confirm('Delete this watch?')"
+                style="margin:0">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <button type="submit" class="outline secondary small-btn">Delete</button>
+          </form>
+        </footer>
+      </article>
+      {{end}}
+    </div>
+    {{end}}
+  </section>
+  {{end}}
+</div>
+
+{{if .VAPIDPublicKey}}
+<script>
+const VAPID_PUBLIC_KEY = "{{.VAPIDPublicKey}}";
+const CSRF_TOKEN = "{{.CSRFToken}}";
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+}
+
+function pushStatus(msg, isError) {
+  const el = document.getElementById('push-status');
+  if (el) { el.textContent = msg; el.style.color = isError ? 'var(--pico-color-red-500)' : ''; }
+}
+
+async function subscribePush() {
+  try {
+    pushStatus('Registering service worker…');
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    });
+    pushStatus('Saving subscription…');
+    const resp = await fetch('/api/push/subscribe', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN},
+      body: JSON.stringify(sub.toJSON())
+    });
+    if (!resp.ok) throw new Error('Server error ' + resp.status);
+    pushStatus('✅ Push notifications enabled!');
+    setTimeout(() => location.reload(), 1200);
+  } catch(e) {
+    pushStatus('Error: ' + e.message, true);
+  }
+}
+
+async function unsubscribePush() {
+  try {
+    const reg = await navigator.serviceWorker.getRegistration('/sw.js');
+    if (!reg) return;
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub) { location.reload(); return; }
+    await sub.unsubscribe();
+    await fetch('/api/push/subscribe', {
+      method: 'DELETE',
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN},
+      body: JSON.stringify({endpoint: sub.endpoint})
+    });
+    location.reload();
+  } catch(e) {
+    pushStatus('Error: ' + e.message, true);
+  }
+}
+
+async function testPush() {
+  try {
+    const resp = await fetch('/api/push/test', {
+      method: 'POST',
+      headers: {'X-CSRF-Token': CSRF_TOKEN}
+    });
+    if (!resp.ok) throw new Error('Server error ' + resp.status);
+    pushStatus('✅ Test notification sent!');
+  } catch(e) {
+    pushStatus('Error: ' + e.message, true);
+  }
+}
+
+// Register SW on page load.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+</script>
+{{end}}
+{{end}}

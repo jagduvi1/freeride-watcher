@@ -1,0 +1,41 @@
+{{define "content"}}
+<hgroup>
+  <h2>Cached routes</h2>
+  <p>Routes currently stored in the database (most recent first, max 500).</p>
+</hgroup>
+
+{{with .Data}}
+{{if not .}}
+  <article><p>No routes cached yet. The fetcher will populate this on the next scheduled run.</p></article>
+{{else}}
+<div class="table-responsive">
+<table>
+  <thead>
+    <tr>
+      <th>Route</th>
+      <th>Departure</th>
+      <th>Available until</th>
+      <th>Car</th>
+      <th>First seen</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .}}
+    <tr>
+      <td><strong>{{.Origin}}</strong> → {{.Destination}}</td>
+      <td>{{fmtTime .DepartureAt}}</td>
+      <td>{{fmtTime .AvailableUntil}}</td>
+      <td>{{if .CarModel}}{{.CarModel}}{{else}}—{{end}}</td>
+      <td>{{fmtTime .FirstSeen}}</td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+{{end}}
+
+<div style="margin-top:1rem">
+  <a href="/dashboard" role="button" class="outline secondary">← Back to Dashboard</a>
+</div>
+{{end}}

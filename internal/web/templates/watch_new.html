@@ -1,0 +1,68 @@
+{{define "content"}}
+<div class="form-page">
+  <hgroup>
+    <h2>New watch</h2>
+    <p>You'll be notified once when a matching route is found (or every time, if repeating).</p>
+  </hgroup>
+
+  <form method="POST" action="/watches/new">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+    <div class="form-row">
+      <label>
+        Origin city <span class="required">*</span>
+        <input type="text" name="origin" placeholder="e.g. Stockholm" required autofocus>
+        <small>Partial name OK — "Stock" matches "Stockholm"</small>
+      </label>
+      <label>
+        Destination city <span class="required">*</span>
+        <input type="text" name="destination" placeholder="e.g. Göteborg" required>
+      </label>
+    </div>
+
+    <fieldset>
+      <legend>Time window (optional)</legend>
+      <div class="form-row">
+        <label>
+          Earliest departure
+          <input type="time" name="earliest_time" placeholder="08:00">
+        </label>
+        <label>
+          Latest departure
+          <input type="time" name="latest_time" placeholder="18:00">
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Weekday filter (optional — select none for any day)</legend>
+      <div class="weekday-grid">
+        <label><input type="checkbox" name="weekdays" value="1"> Mon</label>
+        <label><input type="checkbox" name="weekdays" value="2"> Tue</label>
+        <label><input type="checkbox" name="weekdays" value="3"> Wed</label>
+        <label><input type="checkbox" name="weekdays" value="4"> Thu</label>
+        <label><input type="checkbox" name="weekdays" value="5"> Fri</label>
+        <label><input type="checkbox" name="weekdays" value="6"> Sat</label>
+        <label><input type="checkbox" name="weekdays" value="7"> Sun</label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Notification behaviour</legend>
+      <label>
+        <input type="radio" name="one_time" value="0" checked>
+        Repeating — notify for every new matching route
+      </label>
+      <label>
+        <input type="radio" name="one_time" value="1">
+        One-time — notify once, then deactivate this watch
+      </label>
+    </fieldset>
+
+    <div class="form-actions">
+      <button type="submit">Create watch</button>
+      <a href="/dashboard" role="button" class="outline secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{{end}}
