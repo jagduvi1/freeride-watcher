@@ -139,6 +139,7 @@ func (s *Server) buildMux() *http.ServeMux {
 
 	// Authenticated routes.
 	mux.Handle("GET /dashboard", s.sessionMiddleware(s.requireAuth(http.HandlerFunc(s.handleDashboard))))
+	mux.Handle("GET /watches/{id}", s.sessionMiddleware(s.requireAuth(http.HandlerFunc(s.handleWatchDetail))))
 	mux.Handle("GET /watches/new", s.sessionMiddleware(s.requireAuth(http.HandlerFunc(s.handleWatchNewForm))))
 	mux.Handle("POST /watches/new", s.sessionMiddleware(s.requireAuth(s.csrfMiddleware(http.HandlerFunc(s.handleWatchNewSubmit)))))
 	mux.Handle("GET /watches/{id}/edit", s.sessionMiddleware(s.requireAuth(http.HandlerFunc(s.handleWatchEditForm))))
@@ -294,7 +295,7 @@ func (s *Server) loadTemplates() error {
 
 	pages := []string{
 		"home", "login", "register", "forgot", "reset",
-		"dashboard", "watch_new", "watch_edit", "routes",
+		"dashboard", "watch_new", "watch_edit", "watch_detail", "routes",
 	}
 	s.templates = make(map[string]*template.Template, len(pages))
 	for _, page := range pages {
