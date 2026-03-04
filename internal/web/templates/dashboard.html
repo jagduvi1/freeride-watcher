@@ -68,7 +68,8 @@
             <span>{{fmtTime .CreatedAt}}</span>
           </div>
         </div>
-        <footer>
+        <footer class="watch-footer">
+          <a href="/watches/{{.ID}}/edit" role="button" class="outline small-btn">Edit</a>
           <form method="POST" action="/watches/{{.ID}}/delete"
                 onsubmit="return confirm('Delete this watch?')"
                 style="margin:0">

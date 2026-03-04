@@ -1,0 +1,70 @@
+{{define "content"}}
+{{with .Data}}
+<div class="form-page">
+  <hgroup>
+    <h2>Edit watch</h2>
+    <p>{{.Origin}} → {{.Destination}}</p>
+  </hgroup>
+
+  <form method="POST" action="/watches/{{.ID}}/edit">
+    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+
+    <div class="form-row">
+      <label>
+        Origin city <span class="required">*</span>
+        <input type="text" name="origin" value="{{.Origin}}" required autofocus>
+        <small>Partial name OK — "Stock" matches "Stockholm"</small>
+      </label>
+      <label>
+        Destination city <span class="required">*</span>
+        <input type="text" name="destination" value="{{.Destination}}" required>
+      </label>
+    </div>
+
+    <fieldset>
+      <legend>Time window (optional)</legend>
+      <div class="form-row">
+        <label>
+          Earliest departure
+          <input type="time" name="earliest_time" value="{{.EarliestTime}}">
+        </label>
+        <label>
+          Latest departure
+          <input type="time" name="latest_time" value="{{.LatestTime}}">
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Weekday filter (optional — select none for any day)</legend>
+      <div class="weekday-grid">
+        <label><input type="checkbox" name="weekdays" value="1" {{if hasWeekday .Weekdays "1"}}checked{{end}}> Mon</label>
+        <label><input type="checkbox" name="weekdays" value="2" {{if hasWeekday .Weekdays "2"}}checked{{end}}> Tue</label>
+        <label><input type="checkbox" name="weekdays" value="3" {{if hasWeekday .Weekdays "3"}}checked{{end}}> Wed</label>
+        <label><input type="checkbox" name="weekdays" value="4" {{if hasWeekday .Weekdays "4"}}checked{{end}}> Thu</label>
+        <label><input type="checkbox" name="weekdays" value="5" {{if hasWeekday .Weekdays "5"}}checked{{end}}> Fri</label>
+        <label><input type="checkbox" name="weekdays" value="6" {{if hasWeekday .Weekdays "6"}}checked{{end}}> Sat</label>
+        <label><input type="checkbox" name="weekdays" value="7" {{if hasWeekday .Weekdays "7"}}checked{{end}}> Sun</label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Notification behaviour</legend>
+      <label>
+        <input type="radio" name="one_time" value="0" {{if not .OneTime}}checked{{end}}>
+        Repeating — notify for every new matching route
+      </label>
+      <label>
+        <input type="radio" name="one_time" value="1" {{if .OneTime}}checked{{end}}>
+        One-time — notify once, then deactivate this watch
+      </label>
+    </fieldset>
+
+    <div class="form-actions">
+      <button type="submit">Save changes</button>
+      <a href="/dashboard" role="button" class="outline secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{{end}}
+{{end}}

@@ -102,5 +102,9 @@ nav ul li a:hover { color: #fff; }
 /* ── Small button (nav logout) ── */
 .small-btn { padding: 0.2rem 0.75rem; font-size: 0.85rem; }
 
+/* ── Watch card footer ── */
+.watch-footer { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0; }
+.watch-footer form { margin: 0; }
+
 /* ── Empty state ── */
 .empty-state { text-align: center; padding: 2rem; color: #666; }
