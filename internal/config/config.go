@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -35,6 +36,9 @@ type Config struct {
 	// Auth
 	SessionMaxAge time.Duration
 	ResetTokenTTL time.Duration
+
+	// Admin
+	AdminEmails []string // comma-separated emails with admin access
 }
 
 // Load reads configuration from environment variables with sane defaults.
@@ -60,6 +64,14 @@ func Load() (*Config, error) {
 		ResetTokenTTL: 1 * time.Hour,
 	}
 
+	if raw := os.Getenv("ADMIN_EMAILS"); raw != "" {
+		for _, e := range strings.Split(raw, ",") {
+			if e = strings.ToLower(strings.TrimSpace(e)); e != "" {
+				cfg.AdminEmails = append(cfg.AdminEmails, e)
+			}
+		}
+	}
+
 	var err error
 
 	cfg.FetchInterval, err = envDuration("FETCH_INTERVAL", 5*time.Minute)
@@ -78,6 +90,17 @@ func Load() (*Config, error) {
 // MailgunConfigured returns true when the minimum Mailgun settings are present.
 func (c *Config) MailgunConfigured() bool {
 	return c.MailgunAPIKey != "" && c.MailgunDomain != ""
+}
+
+// IsAdmin returns true when the given email is in the AdminEmails list.
+func (c *Config) IsAdmin(email string) bool {
+	email = strings.ToLower(strings.TrimSpace(email))
+	for _, e := range c.AdminEmails {
+		if e == email {
+			return true
+		}
+	}
+	return false
 }
 
 func env(key, fallback string) string {

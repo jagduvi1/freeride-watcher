@@ -1,0 +1,156 @@
+{{define "content"}}
+<hgroup>
+  <h1>Admin</h1>
+  <p>System overview and user management</p>
+</hgroup>
+
+{{with .Data}}
+
+<!-- ── System stats ─────────────────────────────────────────────────────── -->
+<article>
+  <header><strong>System stats</strong></header>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1rem">
+    <div>
+      <small>Users</small>
+      <p style="font-size:2rem;margin:0"><strong>{{.Stats.UserCount}}</strong></p>
+    </div>
+    <div>
+      <small>Active watches</small>
+      <p style="font-size:2rem;margin:0"><strong>{{.Stats.WatchCount}}</strong></p>
+    </div>
+    <div>
+      <small>Cached routes</small>
+      <p style="font-size:2rem;margin:0"><strong>{{.Stats.RouteCount}}</strong></p>
+    </div>
+    <div>
+      <small>Notifications sent</small>
+      <p style="font-size:2rem;margin:0"><strong>{{.Stats.NotificationCount}}</strong></p>
+    </div>
+  </div>
+  <footer>
+    Last API fetch: {{fmtTime .Stats.LastFetchAt}}
+    {{if .Stats.LastFetchError}}<br><small style="color:var(--pico-del-color)">Error: {{.Stats.LastFetchError}}</small>{{end}}
+  </footer>
+</article>
+
+<!-- ── Users ────────────────────────────────────────────────────────────── -->
+<article>
+  <header><strong>Users ({{len .Users}})</strong></header>
+  {{if .Users}}
+  <div style="overflow-x:auto">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Email</th>
+          <th>Registered</th>
+          <th>Watches</th>
+          <th>Push devices</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Users}}
+        <tr>
+          <td>{{.ID}}</td>
+          <td>{{.Email}}</td>
+          <td>{{fmtDate .CreatedAt}}</td>
+          <td>{{.WatchCount}}</td>
+          <td>{{.PushSubCount}}</td>
+          <td>
+            <form method="POST" action="/admin/users/{{.ID}}/delete"
+                  onsubmit="return confirm('Delete user {{.Email}} and all their data?')"
+                  style="margin:0">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+              <button type="submit" class="outline secondary" style="padding:0.2rem 0.6rem;font-size:0.8rem">
+                Delete
+              </button>
+            </form>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}<p>No users yet.</p>{{end}}
+</article>
+
+<!-- ── Active watches ────────────────────────────────────────────────────── -->
+<article>
+  <header><strong>Active watches ({{len .Watches}})</strong></header>
+  {{if .Watches}}
+  <div style="overflow-x:auto">
+    <table>
+      <thead>
+        <tr>
+          <th>Owner</th>
+          <th>Route</th>
+          <th>Time window</th>
+          <th>Days</th>
+          <th>Created</th>
+          <th>One-time</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Watches}}
+        <tr>
+          <td><small>{{.OwnerEmail}}</small></td>
+          <td>{{.Origin}} → {{.Destination}}</td>
+          <td>
+            {{if or .EarliestTime .LatestTime}}
+              {{if .EarliestTime}}{{.EarliestTime}}{{else}}—{{end}}
+              –
+              {{if .LatestTime}}{{.LatestTime}}{{else}}—{{end}}
+            {{else}}Any{{end}}
+          </td>
+          <td>{{weekdayLabel .Weekdays}}</td>
+          <td>{{fmtDate .CreatedAt}}</td>
+          <td>{{if .OneTime}}Yes{{else}}No{{end}}</td>
+          <td>
+            <form method="POST" action="/admin/watches/{{.ID}}/delete"
+                  onsubmit="return confirm('Delete this watch?')"
+                  style="margin:0">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+              <button type="submit" class="outline secondary" style="padding:0.2rem 0.6rem;font-size:0.8rem">
+                Delete
+              </button>
+            </form>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}<p>No active watches.</p>{{end}}
+</article>
+
+<!-- ── Notification history ──────────────────────────────────────────────── -->
+<article>
+  <header><strong>Notification history (last 100)</strong></header>
+  {{if .History}}
+  <div style="overflow-x:auto">
+    <table>
+      <thead>
+        <tr>
+          <th>User</th>
+          <th>Route</th>
+          <th>Notified at</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .History}}
+        <tr>
+          <td><small>{{.UserEmail}}</small></td>
+          <td>{{.Origin}} → {{.Destination}}</td>
+          <td><small>{{fmtTime .NotifiedAt}}</small></td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}<p>No notifications sent yet.</p>{{end}}
+</article>
+
+{{end}}
+{{end}}

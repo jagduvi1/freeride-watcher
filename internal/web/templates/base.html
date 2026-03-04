@@ -20,6 +20,7 @@
         {{if .User}}
           <li><a href="/dashboard">Dashboard</a></li>
           <li><a href="/routes">Routes</a></li>
+          {{if .IsAdmin}}<li><a href="/admin">Admin</a></li>{{end}}
           <li>
             <form method="POST" action="/logout" style="margin:0">
               <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">

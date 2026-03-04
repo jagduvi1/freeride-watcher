@@ -530,6 +530,115 @@ func scanPushSubs(rows *sql.Rows) ([]PushSubscription, error) {
 	return subs, rows.Err()
 }
 
+// ── Admin queries ─────────────────────────────────────────────────────────────
+
+// AdminUser is a User enriched with aggregate counts for the admin view.
+type AdminUser struct {
+	User
+	WatchCount   int
+	PushSubCount int
+}
+
+// GetAllUsers returns all users with their watch and push subscription counts.
+func (db *DB) GetAllUsers() ([]AdminUser, error) {
+	rows, err := db.Query(`
+		SELECT u.id, u.email, u.password_hash, u.created_at,
+		       COUNT(DISTINCT w.id)  AS watch_count,
+		       COUNT(DISTINCT ps.id) AS push_count
+		FROM users u
+		LEFT JOIN watches w  ON w.user_id = u.id
+		LEFT JOIN push_subscriptions ps ON ps.user_id = u.id
+		GROUP BY u.id
+		ORDER BY u.created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []AdminUser
+	for rows.Next() {
+		var au AdminUser
+		if err := rows.Scan(&au.ID, &au.Email, &au.PasswordHash, &au.CreatedAt,
+			&au.WatchCount, &au.PushSubCount); err != nil {
+			return nil, err
+		}
+		users = append(users, au)
+	}
+	return users, rows.Err()
+}
+
+// DeleteUser removes a user and all their associated data (cascades via FK).
+func (db *DB) DeleteUser(userID int64) error {
+	_, err := db.Exec(`DELETE FROM users WHERE id=?`, userID)
+	return err
+}
+
+// DeleteWatchByID removes a watch regardless of owner (admin use).
+func (db *DB) DeleteWatchByID(id int64) error {
+	_, err := db.Exec(`DELETE FROM watches WHERE id=?`, id)
+	return err
+}
+
+// NotificationHistoryRow is one row in the admin notification log.
+type NotificationHistoryRow struct {
+	UserEmail   string
+	Origin      string
+	Destination string
+	NotifiedAt  time.Time
+}
+
+// GetNotificationHistory returns the most recent notification events.
+func (db *DB) GetNotificationHistory(limit int) ([]NotificationHistoryRow, error) {
+	rows, err := db.Query(`
+		SELECT u.email, r.origin, r.destination, n.notified_at
+		FROM notified n
+		JOIN users  u ON u.id = n.user_id
+		JOIN routes r ON r.route_id = n.route_id
+		ORDER BY n.notified_at DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []NotificationHistoryRow
+	for rows.Next() {
+		var row NotificationHistoryRow
+		if err := rows.Scan(&row.UserEmail, &row.Origin, &row.Destination, &row.NotifiedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// SystemStats contains aggregate counts for the admin overview.
+type SystemStats struct {
+	UserCount         int
+	WatchCount        int
+	RouteCount        int
+	NotificationCount int
+	LastFetchAt       time.Time
+	LastFetchError    string
+}
+
+// GetSystemStats queries aggregate counts from the DB.
+// LastFetchAt and LastFetchError must be populated by the caller from the fetcher.
+func (db *DB) GetSystemStats() (SystemStats, error) {
+	var s SystemStats
+	row := db.QueryRow(`
+		SELECT
+			(SELECT COUNT(*) FROM users),
+			(SELECT COUNT(*) FROM watches WHERE active=1),
+			(SELECT COUNT(*) FROM routes),
+			(SELECT COUNT(*) FROM notified)
+	`)
+	err := row.Scan(&s.UserCount, &s.WatchCount, &s.RouteCount, &s.NotificationCount)
+	return s, err
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 func boolInt(b bool) int {
