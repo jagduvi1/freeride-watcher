@@ -146,17 +146,56 @@ type apiGroup struct {
 }
 
 type apiRoute struct {
-	ID               int64       `json:"id"`
-	TransportOfferID int64       `json:"transportOfferId"`
-	PickupLocation   apiLocation `json:"pickupLocation"`
-	ReturnLocation   apiLocation `json:"returnLocation"`
-	AvailableAt      time.Time   `json:"availableAt"`
-	LatestReturn     time.Time   `json:"latestReturn"`
-	ExpireTime       time.Time   `json:"expireTime"`
-	CarModel         string      `json:"carModel"`
-	PublicDescription string     `json:"publicDescription"`
-	Distance         float64     `json:"distance"`
-	TravelTime       int         `json:"travelTime"`
+	ID                int64       `json:"id"`
+	TransportOfferID  int64       `json:"transportOfferId"`
+	PickupLocation    apiLocation `json:"pickupLocation"`
+	ReturnLocation    apiLocation `json:"returnLocation"`
+	AvailableAt       flexTime    `json:"availableAt"`
+	LatestReturn      flexTime    `json:"latestReturn"`
+	ExpireTime        flexTime    `json:"expireTime"`
+	CarModel          string      `json:"carModel"`
+	PublicDescription string      `json:"publicDescription"`
+	Distance          float64     `json:"distance"`
+	TravelTime        int         `json:"travelTime"`
+}
+
+// flexTime parses RFC3339 timestamps and also bare "2006-01-02T15:04:05"
+// values (no timezone) that the Hertz API occasionally emits, treating the
+// latter as Europe/Stockholm local time.
+type flexTime struct{ time.Time }
+
+var stockholmTZ = func() *time.Location {
+	loc, err := time.LoadLocation("Europe/Stockholm")
+	if err != nil {
+		return time.UTC // safe fallback in environments without tzdata
+	}
+	return loc
+}()
+
+func (ft *flexTime) UnmarshalJSON(data []byte) error {
+	// Strip surrounding quotes.
+	if len(data) < 2 || data[0] != '"' {
+		return fmt.Errorf("flexTime: expected JSON string, got %s", data)
+	}
+	s := string(data[1 : len(data)-1])
+	if s == "" || s == "null" {
+		return nil
+	}
+
+	// Try RFC3339 first (includes timezone offset).
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		ft.Time = t
+		return nil
+	}
+
+	// Fallback: bare datetime — treat as Stockholm local time.
+	const bare = "2006-01-02T15:04:05"
+	t, err := time.ParseInLocation(bare, s, stockholmTZ)
+	if err != nil {
+		return fmt.Errorf("flexTime: cannot parse %q: %w", s, err)
+	}
+	ft.Time = t
+	return nil
 }
 
 type apiLocation struct {
@@ -232,8 +271,8 @@ func parseRoutes(body []byte) ([]db.Route, error) {
 				RouteID:        fmt.Sprintf("hertz-%d", ar.ID),
 				Origin:         ar.PickupLocation.displayCity(),
 				Destination:    ar.ReturnLocation.displayCity(),
-				DepartureAt:    ar.AvailableAt,
-				AvailableUntil: ar.LatestReturn,
+				DepartureAt:    ar.AvailableAt.Time,
+				AvailableUntil: ar.LatestReturn.Time,
 				CarModel:       ar.CarModel,
 				RawJSON:        string(raw),
 			}
