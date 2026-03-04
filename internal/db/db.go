@@ -312,6 +312,31 @@ func (db *DB) GetAllActiveWatches() ([]Watch, error) {
 	return scanWatches(rows)
 }
 
+func (db *DB) GetWatchByID(id, userID int64) (*Watch, error) {
+	w := &Watch{}
+	var oneTime, active int
+	err := db.QueryRow(
+		`SELECT id,user_id,origin,destination,earliest_time,latest_time,weekdays,one_time,active,created_at
+		 FROM watches WHERE id=? AND user_id=?`, id, userID,
+	).Scan(&w.ID, &w.UserID, &w.Origin, &w.Destination,
+		&w.EarliestTime, &w.LatestTime, &w.Weekdays, &oneTime, &active, &w.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	w.OneTime = oneTime == 1
+	w.Active = active == 1
+	return w, err
+}
+
+func (db *DB) UpdateWatch(w Watch) error {
+	_, err := db.Exec(
+		`UPDATE watches SET origin=?,destination=?,earliest_time=?,latest_time=?,weekdays=?,one_time=?,active=?
+		 WHERE id=? AND user_id=?`,
+		w.Origin, w.Destination, w.EarliestTime, w.LatestTime, w.Weekdays,
+		boolInt(w.OneTime), boolInt(w.Active), w.ID, w.UserID)
+	return err
+}
+
 func (db *DB) DeleteWatch(id, userID int64) error {
 	_, err := db.Exec(`DELETE FROM watches WHERE id=? AND user_id=?`, id, userID)
 	return err

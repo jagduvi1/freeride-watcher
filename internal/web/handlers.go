@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jagduvi1/freeride-watcher/internal/auth"
 	"github.com/jagduvi1/freeride-watcher/internal/db"
+	"github.com/jagduvi1/freeride-watcher/internal/matcher"
 	"github.com/jagduvi1/freeride-watcher/internal/notify"
 )
 
@@ -361,7 +363,8 @@ func (s *Server) handleWatchNewSubmit(w http.ResponseWriter, r *http.Request) {
 		OneTime:      r.FormValue("one_time") == "1",
 	}
 
-	if _, err := s.db.CreateWatch(w2); err != nil {
+	watchID, err := s.db.CreateWatch(w2)
+	if err != nil {
 		slog.Error("create watch", "err", err)
 		s.render(w, r, "watch_new", TemplateData{
 			Title:     "New watch",
@@ -370,8 +373,89 @@ func (s *Server) handleWatchNewSubmit(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	w2.ID = watchID
+
+	// Scan existing cached routes immediately so the user gets notified if
+	// there are already matching routes in the DB.
+	go s.fetcher.ScanWatchAgainstExistingRoutes(r.Context(), w2)
 
 	s.redirect(w, r, "/dashboard", "Watch created!", "success")
+}
+
+func (s *Server) handleWatchEditForm(w http.ResponseWriter, r *http.Request) {
+	user := userFromCtx(r)
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	watch, err := s.db.GetWatchByID(id, user.ID)
+	if err != nil || watch == nil {
+		s.redirect(w, r, "/dashboard", "Watch not found.", "error")
+		return
+	}
+	s.render(w, r, "watch_edit", TemplateData{Title: "Edit watch", Data: watch})
+}
+
+func (s *Server) handleWatchEditSubmit(w http.ResponseWriter, r *http.Request) {
+	user := userFromCtx(r)
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	existing, err := s.db.GetWatchByID(id, user.ID)
+	if err != nil || existing == nil {
+		s.redirect(w, r, "/dashboard", "Watch not found.", "error")
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	origin := strings.TrimSpace(r.FormValue("origin"))
+	destination := strings.TrimSpace(r.FormValue("destination"))
+	if origin == "" || destination == "" {
+		s.render(w, r, "watch_edit", TemplateData{
+			Title:     "Edit watch",
+			Flash:     "Origin and destination are required.",
+			FlashType: "error",
+			Data:      existing,
+		})
+		return
+	}
+
+	updated := db.Watch{
+		ID:           id,
+		UserID:       user.ID,
+		Origin:       origin,
+		Destination:  destination,
+		EarliestTime: strings.TrimSpace(r.FormValue("earliest_time")),
+		LatestTime:   strings.TrimSpace(r.FormValue("latest_time")),
+		Weekdays:     buildWeekdays(r.Form["weekdays"]),
+		OneTime:      r.FormValue("one_time") == "1",
+		Active:       existing.Active,
+	}
+
+	if err := s.db.UpdateWatch(updated); err != nil {
+		slog.Error("update watch", "err", err)
+		s.render(w, r, "watch_edit", TemplateData{
+			Title:     "Edit watch",
+			Flash:     "An error occurred. Please try again.",
+			FlashType: "error",
+			Data:      existing,
+		})
+		return
+	}
+
+	// Re-scan existing cached routes against the updated watch so the user
+	// gets notified immediately if there are already matching routes in the DB.
+	go s.fetcher.ScanWatchAgainstExistingRoutes(r.Context(), updated)
+
+	s.redirect(w, r, "/dashboard", "Watch updated!", "success")
 }
 
 func (s *Server) handleWatchDelete(w http.ResponseWriter, r *http.Request) {
@@ -389,6 +473,45 @@ func (s *Server) handleWatchDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.redirect(w, r, "/dashboard", "Watch deleted.", "success")
+}
+
+func (s *Server) handleWatchDetail(w http.ResponseWriter, r *http.Request) {
+	user := userFromCtx(r)
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	watch, err := s.db.GetWatchByID(id, user.ID)
+	if err != nil || watch == nil {
+		s.redirect(w, r, "/dashboard", "Watch not found.", "error")
+		return
+	}
+
+	allRoutes, err := s.db.GetAllRoutes()
+	if err != nil {
+		slog.Error("get routes for watch detail", "err", err)
+	}
+
+	var matched []db.Route
+	for _, route := range allRoutes {
+		if matcher.Match(route, *watch) {
+			matched = append(matched, route)
+		}
+	}
+	// Sort upcoming first.
+	sort.Slice(matched, func(i, j int) bool {
+		return matched[i].DepartureAt.Before(matched[j].DepartureAt)
+	})
+
+	type watchDetailData struct {
+		Watch  *db.Watch
+		Routes []db.Route
+	}
+	s.render(w, r, "watch_detail", TemplateData{
+		Title: watch.Origin + " → " + watch.Destination,
+		Data:  watchDetailData{Watch: watch, Routes: matched},
+	})
 }
 
 // buildWeekdays converts a slice of weekday string values to a comma-separated list.

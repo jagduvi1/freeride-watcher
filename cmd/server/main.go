@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/jagduvi1/freeride-watcher/internal/config"
@@ -96,9 +97,16 @@ func initVAPID(cfg *config.Config, database *db.DB) error {
 	cfg.VAPIDPrivateKey = privKey
 
 	slog.Info("VAPID keys generated and saved to database")
-	slog.Info("To persist across DB resets, add these to your .env:",
-		"VAPID_PUBLIC_KEY", pubKey,
-		"VAPID_PRIVATE_KEY", privKey,
-	)
+	// Print keys directly to stderr (not via slog) so they don't appear as
+	// structured fields in log aggregators. Copy them to .env to persist
+	// across DB resets.
+	fmt.Fprintf(os.Stderr, strings.Join([]string{
+		"",
+		"=== VAPID keys generated — save these to your .env ===",
+		"VAPID_PUBLIC_KEY=" + pubKey,
+		"VAPID_PRIVATE_KEY=" + privKey,
+		"======================================================",
+		"",
+	}, "\n"))
 	return nil
 }

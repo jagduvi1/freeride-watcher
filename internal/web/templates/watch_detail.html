@@ -1,0 +1,69 @@
+{{define "content"}}
+{{with .Data}}
+<div class="form-page">
+  <div class="dash-header">
+    <hgroup>
+      <h2>{{.Watch.Origin}} → {{.Watch.Destination}}</h2>
+      <p>All matching routes currently available</p>
+    </hgroup>
+    <a href="/watches/{{.Watch.ID}}/edit" role="button" class="outline">Edit watch</a>
+  </div>
+
+  {{if or .Watch.EarliestTime .Watch.LatestTime .Watch.Weekdays}}
+  <article style="margin-bottom:1.5rem">
+    <div class="watch-details">
+      {{if or .Watch.EarliestTime .Watch.LatestTime}}
+      <div class="detail-row">
+        <span class="label">Time window:</span>
+        <span>
+          {{if .Watch.EarliestTime}}from {{.Watch.EarliestTime}}{{end}}
+          {{if and .Watch.EarliestTime .Watch.LatestTime}} – {{end}}
+          {{if .Watch.LatestTime}}until {{.Watch.LatestTime}}{{end}}
+        </span>
+      </div>
+      {{end}}
+      {{if .Watch.Weekdays}}
+      <div class="detail-row">
+        <span class="label">Days:</span>
+        <span>{{weekdayLabel .Watch.Weekdays}}</span>
+      </div>
+      {{end}}
+    </div>
+  </article>
+  {{end}}
+
+  {{if not .Routes}}
+  <article class="empty-state">
+    <p>No matching routes in the database yet. You will be notified when one appears.</p>
+  </article>
+  {{else}}
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>Route</th>
+          <th>Departure</th>
+          <th>Available until</th>
+          <th>Car</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Routes}}
+        <tr>
+          <td><strong>{{.Origin}}</strong> → {{.Destination}}</td>
+          <td>{{fmtTime .DepartureAt}}</td>
+          <td>{{if .AvailableUntil.IsZero}}—{{else}}{{fmtTime .AvailableUntil}}{{end}}</td>
+          <td>{{if .CarModel}}{{.CarModel}}{{else}}—{{end}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{end}}
+
+  <div style="margin-top:1.5rem">
+    <a href="/dashboard" role="button" class="outline secondary">← Dashboard</a>
+  </div>
+</div>
+{{end}}
+{{end}}

@@ -1,0 +1,45 @@
+# Production compose for freeride-watcher.
+# Use this INSTEAD of docker-compose.yml when running behind Traefik + Cloudflare.
+#
+# Prerequisites:
+#   - External Docker network created:  docker network create web
+#   - Traefik running:                  cd traefik && docker compose up -d
+#   - DOMAIN in .env points to your hostname (e.g. freerider.example.com)
+#   - Cloudflare: A record → VM IP, orange cloud ON, SSL mode "Full"
+#
+# Start:  docker compose -f docker-compose.prod.yml up -d --build
+# Update: docker compose -f docker-compose.prod.yml up -d --build --no-deps app
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    # No ports: Traefik discovers the container on the "web" network.
+    expose:
+      - "8080"
+    volumes:
+      - app-data:/data
+    env_file:
+      - .env
+    environment:
+      - DB_PATH=/data/freeride.db
+    networks:
+      - web      # Traefik routes external HTTP here
+      - internal # isolated: nothing else on the VM talks to the app directly
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "web"
+      # Cloudflare handles HTTPS; Traefik only sees HTTP from the CF edge.
+      traefik.http.routers.freerider.rule: "Host(`${DOMAIN}`)"
+      traefik.http.routers.freerider.entrypoints: "web"
+      traefik.http.services.freerider.loadbalancer.server.port: "8080"
+
+volumes:
+  app-data:
+    driver: local
+
+networks:
+  web:
+    external: true
+  internal:
+    internal: true
