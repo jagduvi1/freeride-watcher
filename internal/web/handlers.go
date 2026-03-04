@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jagduvi1/freeride-watcher/internal/auth"
 	"github.com/jagduvi1/freeride-watcher/internal/db"
+	"github.com/jagduvi1/freeride-watcher/internal/matcher"
 	"github.com/jagduvi1/freeride-watcher/internal/notify"
 )
 
@@ -471,6 +473,45 @@ func (s *Server) handleWatchDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.redirect(w, r, "/dashboard", "Watch deleted.", "success")
+}
+
+func (s *Server) handleWatchDetail(w http.ResponseWriter, r *http.Request) {
+	user := userFromCtx(r)
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	watch, err := s.db.GetWatchByID(id, user.ID)
+	if err != nil || watch == nil {
+		s.redirect(w, r, "/dashboard", "Watch not found.", "error")
+		return
+	}
+
+	allRoutes, err := s.db.GetAllRoutes()
+	if err != nil {
+		slog.Error("get routes for watch detail", "err", err)
+	}
+
+	var matched []db.Route
+	for _, route := range allRoutes {
+		if matcher.Match(route, *watch) {
+			matched = append(matched, route)
+		}
+	}
+	// Sort upcoming first.
+	sort.Slice(matched, func(i, j int) bool {
+		return matched[i].DepartureAt.Before(matched[j].DepartureAt)
+	})
+
+	type watchDetailData struct {
+		Watch  *db.Watch
+		Routes []db.Route
+	}
+	s.render(w, r, "watch_detail", TemplateData{
+		Title: watch.Origin + " → " + watch.Destination,
+		Data:  watchDetailData{Watch: watch, Routes: matched},
+	})
 }
 
 // buildWeekdays converts a slice of weekday string values to a comma-separated list.

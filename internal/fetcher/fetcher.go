@@ -111,7 +111,7 @@ func (f *Fetcher) runOnce(ctx context.Context) error {
 		return err
 	}
 
-	newCount := 0
+	var newRoutes []db.Route
 	for _, r := range routes {
 		isNew, upsertErr := f.db.UpsertRoute(r)
 		if upsertErr != nil {
@@ -119,14 +119,14 @@ func (f *Fetcher) runOnce(ctx context.Context) error {
 			continue
 		}
 		if isNew {
-			newCount++
 			slog.Info("new route found", "route_id", r.RouteID, "origin", r.Origin, "destination", r.Destination, "departure", r.DepartureAt.Format("2006-01-02 15:04"))
-			f.notify(ctx, r)
+			newRoutes = append(newRoutes, r)
 		}
 	}
 
-	if newCount > 0 {
-		slog.Info("fetch complete", "total", len(routes), "new", newCount)
+	if len(newRoutes) > 0 {
+		slog.Info("fetch complete", "total", len(routes), "new", len(newRoutes))
+		f.notifyBatched(ctx, newRoutes)
 	}
 
 	count, _ := f.db.CountRoutes()
@@ -190,11 +190,23 @@ type apiLocation struct {
 	GeoLon  float64 `json:"geoLon"`
 }
 
-func (l apiLocation) displayCity() string {
-	if l.City != "" {
-		return l.City
+// displayName returns the most human-readable name for a location.
+// It prefers the full location Name over the bare City field, since Name
+// contains the meaningful identifier (e.g. "Göteborg Landvetter Flygplats"
+// vs the city field "Landvetter"). Provider/kiosk suffixes after " / ", "/",
+// or " & " are stripped (e.g. "/ Self Service Kiosk", "/ Volvo").
+func (l apiLocation) displayName() string {
+	name := strings.TrimSpace(l.Name)
+	if name == "" {
+		return strings.TrimSpace(l.City)
 	}
-	return l.Name
+	for _, sep := range []string{" / ", "/", " & "} {
+		if idx := strings.Index(name, sep); idx > 0 {
+			name = strings.TrimSpace(name[:idx])
+			break
+		}
+	}
+	return name
 }
 
 func (f *Fetcher) fetch(ctx context.Context) ([]db.Route, error) {
@@ -261,23 +273,25 @@ func parseRoutes(body []byte) ([]db.Route, error) {
 			raw, _ := json.Marshal(ar)
 			r := db.Route{
 				RouteID:        fmt.Sprintf("hertz-%d", ar.ID),
-				Origin:         ar.PickupLocation.displayCity(),
-				Destination:    ar.ReturnLocation.displayCity(),
+				Origin:         ar.PickupLocation.displayName(),
+				Destination:    ar.ReturnLocation.displayName(),
 				DepartureAt:    ar.AvailableAt.Time,
 				AvailableUntil: ar.LatestReturn.Time,
 				CarModel:       ar.CarModel,
 				RawJSON:        string(raw),
 			}
-			// Fallback: if city is blank, use group-level names.
+			// Fallback to group-level names if individual location name is blank.
 			if r.Origin == "" {
 				r.Origin = g.PickupLocationName
 			}
 			if r.Destination == "" {
 				r.Destination = g.ReturnLocationName
 			}
-			if !r.DepartureAt.IsZero() {
-				routes = append(routes, r)
+			if r.DepartureAt.IsZero() {
+				slog.Warn("route skipped: missing departure time", "route_id", ar.ID, "origin", r.Origin, "destination", r.Destination)
+				continue
 			}
+			routes = append(routes, r)
 		}
 	}
 	return routes, nil
@@ -285,8 +299,8 @@ func parseRoutes(body []byte) ([]db.Route, error) {
 
 // ── Matching & notification ───────────────────────────────────────────────────
 
-// ScanWatchAgainstExistingRoutes checks all cached routes in the DB against
-// a single watch and sends notifications for any matches not already notified.
+// ScanWatchAgainstExistingRoutes checks all cached routes against a single watch
+// and sends one batched notification for all unnotified matches.
 // Called after a watch is created or edited so the user gets immediate results.
 func (f *Fetcher) ScanWatchAgainstExistingRoutes(ctx context.Context, watch db.Watch) {
 	routes, err := f.db.GetAllRoutes()
@@ -295,7 +309,7 @@ func (f *Fetcher) ScanWatchAgainstExistingRoutes(ctx context.Context, watch db.W
 		return
 	}
 
-	matched := 0
+	var matched []db.Route
 	for _, route := range routes {
 		if !matcher.Match(route, watch) {
 			continue
@@ -304,97 +318,127 @@ func (f *Fetcher) ScanWatchAgainstExistingRoutes(ctx context.Context, watch db.W
 		if err != nil || already {
 			continue
 		}
-		slog.Info("scan watch matched existing route", "watch_id", watch.ID, "route_id", route.RouteID, "origin", route.Origin, "destination", route.Destination)
-		if err := f.db.MarkNotified(watch.UserID, route.RouteID); err != nil {
+		matched = append(matched, route)
+	}
+
+	if len(matched) == 0 {
+		return
+	}
+
+	slog.Info("scan watch: sending batched notification", "watch_id", watch.ID, "matched", len(matched))
+	for _, r := range matched {
+		if err := f.db.MarkNotified(watch.UserID, r.RouteID); err != nil {
 			slog.Warn("mark notified failed", "err", err)
-			continue
 		}
-		f.sendNotification(ctx, watch.UserID, route)
-		matched++
 	}
-	if matched > 0 {
-		slog.Info("scan watch complete", "watch_id", watch.ID, "matched", matched)
-	}
+	f.sendWatchNotification(ctx, watch, matched)
 }
 
-func (f *Fetcher) notify(ctx context.Context, route db.Route) {
+// notifyBatched groups new routes by watch and sends one notification per watch.
+func (f *Fetcher) notifyBatched(ctx context.Context, newRoutes []db.Route) {
 	watches, err := f.db.GetAllActiveWatches()
 	if err != nil {
 		slog.Warn("get watches failed", "err", err)
 		return
 	}
 
-	// Collect distinct user IDs that have a matching watch.
-	notifyUsers := map[int64]db.Watch{}
+	type watchHits struct {
+		watch  db.Watch
+		routes []db.Route
+	}
+
+	var hits []watchHits
 	for _, w := range watches {
-		if !matcher.Match(route, w) {
-			continue
+		var matched []db.Route
+		for _, r := range newRoutes {
+			if !matcher.Match(r, w) {
+				continue
+			}
+			already, err := f.db.HasBeenNotified(w.UserID, r.RouteID)
+			if err != nil || already {
+				continue
+			}
+			matched = append(matched, r)
 		}
-		already, err := f.db.HasBeenNotified(w.UserID, route.RouteID)
-		if err != nil || already {
-			continue
+		if len(matched) > 0 {
+			hits = append(hits, watchHits{w, matched})
 		}
-		notifyUsers[w.UserID] = w
 	}
 
-	if len(notifyUsers) > 0 {
-		slog.Info("notifying users", "route_id", route.RouteID, "user_count", len(notifyUsers))
+	if len(hits) > 0 {
+		slog.Info("sending watch notifications", "watches_with_hits", len(hits))
 	}
 
-	for userID, watch := range notifyUsers {
-		if err := f.db.MarkNotified(userID, route.RouteID); err != nil {
-			slog.Warn("mark notified failed", "err", err)
-			continue
+	for _, h := range hits {
+		for _, r := range h.routes {
+			if err := f.db.MarkNotified(h.watch.UserID, r.RouteID); err != nil {
+				slog.Warn("mark notified failed", "err", err)
+			}
 		}
-		f.sendNotification(ctx, userID, route)
-
-		// Deactivate one-time watches.
-		if watch.OneTime {
-			_ = f.db.DeactivateWatch(watch.ID)
+		f.sendWatchNotification(ctx, h.watch, h.routes)
+		if h.watch.OneTime {
+			_ = f.db.DeactivateWatch(h.watch.ID)
 		}
 	}
 }
 
-// sendNotification delivers a push (and email fallback) to a single user for a route.
-func (f *Fetcher) sendNotification(ctx context.Context, userID int64, route db.Route) {
-	payload := notify.PushPayload{
-		Title: "🚗 Freerider route available!",
-		Body: fmt.Sprintf("%s → %s on %s",
-			route.Origin, route.Destination,
-			route.DepartureAt.Format("Mon Jan 2 at 15:04")),
-		URL: "/dashboard",
+// sendWatchNotification delivers one push (and email fallback) for a watch
+// covering all newly matched routes in a single message.
+func (f *Fetcher) sendWatchNotification(ctx context.Context, watch db.Watch, routes []db.Route) {
+	n := len(routes)
+	var title, body string
+	if n == 1 {
+		title = "🚗 Freerider route available!"
+		body = fmt.Sprintf("%s → %s on %s",
+			routes[0].Origin, routes[0].Destination,
+			routes[0].DepartureAt.Format("Mon Jan 2 at 15:04"))
+	} else {
+		title = fmt.Sprintf("🚗 %d new Freerider routes!", n)
+		body = fmt.Sprintf("%d routes found for %s → %s", n, watch.Origin, watch.Destination)
 	}
 
-	subs, err := f.db.GetPushSubscriptionsByUser(userID)
+	payload := notify.PushPayload{
+		Title: title,
+		Body:  body,
+		URL:   fmt.Sprintf("/watches/%d", watch.ID),
+	}
+
+	subs, err := f.db.GetPushSubscriptionsByUser(watch.UserID)
 	if err != nil {
-		slog.Warn("get push subs failed", "user_id", userID, "err", err)
+		slog.Warn("get push subs failed", "user_id", watch.UserID, "err", err)
 	}
 	for _, sub := range subs {
 		if err := f.pusher.Send(sub, payload); err != nil {
 			if err == notify.ErrGone {
 				_ = f.db.DeletePushSubscriptionByEndpoint(sub.Endpoint)
 			} else {
-				slog.Warn("push send failed", "user_id", userID, "err", err)
+				slog.Warn("push send failed", "user_id", watch.UserID, "err", err)
 			}
 		}
 	}
 
 	// Email fallback if user has no active push subscriptions.
 	if len(subs) == 0 && f.emailer != nil {
-		user, _ := f.db.GetUserByID(userID)
+		user, _ := f.db.GetUserByID(watch.UserID)
 		if user != nil {
-			body := fmt.Sprintf(
-				"Hello,\n\nA Hertz Freerider route matching your watch was found:\n\n"+
-					"  %s → %s\n  Available: %s\n  Car: %s\n\n"+
-					"Log in at %s to see all routes.\n\n"+
-					"— Freerider Watcher\n",
-				route.Origin, route.Destination,
-				route.DepartureAt.Format("Mon Jan 2 2006 at 15:04"),
-				route.CarModel,
-				f.cfg.BaseURL,
+			var sb strings.Builder
+			for _, r := range routes {
+				fmt.Fprintf(&sb, "  %s → %s on %s (Car: %s)\n",
+					r.Origin, r.Destination,
+					r.DepartureAt.Format("Mon Jan 2 2006 at 15:04"),
+					r.CarModel)
+			}
+			emailBody := fmt.Sprintf(
+				"Hello,\n\n%d Hertz Freerider route(s) matching your watch were found:\n\n%s\n"+
+					"View all matches at %s/watches/%d\n\n— Freerider Watcher\n",
+				n, sb.String(), f.cfg.BaseURL, watch.ID,
 			)
-			if err := f.emailer.Send(user.Email, "Freerider route available!", body); err != nil {
-				slog.Warn("email send failed", "user_id", userID, "err", err)
+			subject := "Freerider route available!"
+			if n > 1 {
+				subject = fmt.Sprintf("%d Freerider routes available!", n)
+			}
+			if err := f.emailer.Send(user.Email, subject, emailBody); err != nil {
+				slog.Warn("email send failed", "user_id", watch.UserID, "err", err)
 			}
 		}
 	}

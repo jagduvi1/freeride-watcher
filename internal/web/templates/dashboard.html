@@ -37,7 +37,7 @@
       {{range .Watches}}
       <article class="watch-card {{if not .Active}}watch-inactive{{end}}">
         <header>
-          <span class="route-label">{{.Origin}} → {{.Destination}}</span>
+          <a href="/watches/{{.ID}}" class="route-label">{{.Origin}} → {{.Destination}}</a>
           {{if not .Active}}<span class="badge">inactive</span>{{end}}
           {{if .OneTime}}<span class="badge">one-time</span>{{end}}
         </header>
