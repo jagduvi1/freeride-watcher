@@ -53,9 +53,9 @@ func Load() (*Config, error) {
 		MailgunFrom:   env("MAILGUN_FROM", ""),
 		MailgunRegion: env("MAILGUN_REGION", "us"),
 
-		VAPIDPublicKey:  env("VAPID_PUBLIC_KEY", ""),
-		VAPIDPrivateKey: env("VAPID_PRIVATE_KEY", ""),
-		VAPIDSubject:    env("VAPID_SUBJECT", "mailto:admin@example.com"),
+		VAPIDPublicKey:  strings.TrimSpace(env("VAPID_PUBLIC_KEY", "")),
+		VAPIDPrivateKey: strings.TrimSpace(env("VAPID_PRIVATE_KEY", "")),
+		VAPIDSubject:    strings.TrimSpace(env("VAPID_SUBJECT", "mailto:admin@example.com")),
 
 		HertzAPIURL: env("HERTZ_API_URL",
 			"https://www.hertzfreerider.se/api/transport-routes/?country=SWEDEN"),
