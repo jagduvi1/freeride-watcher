@@ -1,8 +1,10 @@
 # Freerider Watcher
 
-A lightweight, self-hosted web application that watches [Hertz Freerider](https://www.hertzfreerider.se) transport routes and notifies you via **Web Push** (or email fallback) when a matching route becomes available.
+A lightweight, self-hosted web application that watches [Hertz Freerider Sweden](https://www.hertzfreerider.se) transport routes and notifies you via **Web Push** (or email fallback) when a matching route becomes available.
 
 > Hertz Freerider lets you drive rental cars between cities for free — but routes fill up fast. This tool keeps watch so you don't have to.
+
+> **Note:** Currently only supports **Hertz Freerider Sweden** (`hertzfreerider.se`). Similar programs exist in other Nordic countries but are not yet supported.
 
 ---
 
@@ -149,7 +151,7 @@ make logs
 users          — email + bcrypt password hash
 sessions       — server-side sessions (token → user_id + CSRF token)
 watches        — user-defined route watches
-routes         — routes cached from the Hertz Freerider API
+routes         — routes cached from Hertz Freerider Sweden
 notified       — deduplication log (user_id, route_id) — prevents duplicate alerts
 push_subscriptions — Web Push endpoint + keys per device per user
 ```
