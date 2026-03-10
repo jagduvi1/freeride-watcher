@@ -11,6 +11,8 @@
 </form>
 
 {{with .Data.Routes}}
+
+{{/* ── Desktop table ── */}}
 <div class="table-responsive">
 <table>
   <thead>
@@ -36,14 +38,29 @@
 </table>
 </div>
 
+{{/* ── Mobile cards ── */}}
+<div class="route-cards">
+  {{range .}}
+  <div class="route-card">
+    <div class="rc-route">{{.Origin}} → {{.Destination}}</div>
+    <dl>
+      <dt>Departure</dt><dd>{{fmtTime .DepartureAt}}</dd>
+      <dt>Until</dt><dd>{{fmtTime .AvailableUntil}}</dd>
+      <dt>Car</dt><dd>{{if .CarModel}}{{.CarModel}}{{else}}—{{end}}</dd>
+      <dt>First seen</dt><dd>{{fmtTime .FirstSeen}}</dd>
+    </dl>
+  </div>
+  {{end}}
+</div>
+
 {{if gt $.Data.TotalPages 1}}
-<nav style="display:flex;gap:.5rem;align-items:center;margin-top:1rem">
+<nav class="pagination">
   {{if $.Data.PrevPage}}
     <a href="/routes?q={{$.Data.Query}}&page={{$.Data.PrevPage}}" role="button" class="outline">← Prev</a>
   {{else}}
     <button disabled class="outline">← Prev</button>
   {{end}}
-  <span style="flex:1;text-align:center">Page {{$.Data.Page}} of {{$.Data.TotalPages}}</span>
+  <span class="pagination-label">Page {{$.Data.Page}} of {{$.Data.TotalPages}}</span>
   {{if $.Data.NextPage}}
     <a href="/routes?q={{$.Data.Query}}&page={{$.Data.NextPage}}" role="button" class="outline">Next →</a>
   {{else}}
@@ -53,7 +70,7 @@
 {{end}}
 
 {{else}}
-  <article><p>No routes found{{if $.Data.Query}} matching "{{$.Data.Query}}"{{end}}.</p></article>
+  <article class="empty-state"><p>No routes found{{if $.Data.Query}} matching "{{$.Data.Query}}"{{end}}.</p></article>
 {{end}}
 
 <div style="margin-top:1rem">

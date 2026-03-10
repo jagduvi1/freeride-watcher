@@ -19,7 +19,7 @@
 
 <section class="status-bar">
   <article>
-    <header><strong>API Status</strong></header>
+    <header><strong>Status</strong></header>
     {{with .Data}}
       {{with .Status}}
         {{if .LastFetchAt.IsZero}}
@@ -41,11 +41,11 @@
   <div class="feature-grid">
     <article>
       <h3>1. Create a watch</h3>
-      <p>Specify origin & destination city, optional time window, and whether you want a one-time or repeating alert.</p>
+      <p>Specify origin &amp; destination city, optional time window, and whether you want a one-time or repeating alert.</p>
     </article>
     <article>
-      <h3>2. We poll the API</h3>
-      <p>Routes are fetched every few minutes from the official Hertz Freerider API with jitter to be a polite client.</p>
+      <h3>2. We check for routes</h3>
+      <p>Routes are fetched every few minutes from Hertz Freerider with jitter to be a polite client.</p>
     </article>
     <article>
       <h3>3. Get notified</h3>
